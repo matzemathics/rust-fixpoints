@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
-    marker::PhantomData,
     ops::Deref,
 };
 
@@ -251,6 +250,7 @@ impl MonotoneTransform<u64, u64> for Factorial {
     }
 }
 
+#[cfg(test)]
 mod test {
     use crate::{compute_fixpoint, Factorial};
 
@@ -263,7 +263,7 @@ mod test {
 
     #[test]
     fn test_factorial() {
-        let (table, deps) = compute_fixpoint(4, Factorial);
+        let (table, _) = compute_fixpoint(4, Factorial);
         assert_eq!(table.lookup(&4), Some(&24));
     }
 }
