@@ -61,7 +61,6 @@ impl<K: JoinSemiLattice + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V>
         self.0.insert(k, value);
     }
 
-    #[must_use]
     fn adjust<'a>(&'a mut self, k: &'a K, v: &'a V) -> impl Iterator<Item = &K> + 'a {
         self.0.iter_mut().filter_map(move |(a, b)| {
             if k.leq(a) {
@@ -195,7 +194,7 @@ where
 
         self.suspended.push(alpha.clone());
 
-        while !self.dependencies.dom_contains(&alpha) {
+        while !self.dependencies.dom_contains(alpha) {
             self.dependencies.extend(alpha.clone());
             let beta = tau.call(self.pretended_f(alpha, tau), alpha.clone());
             let modified = self.partial_table.adjust(alpha, &beta);
@@ -257,7 +256,7 @@ mod test {
     #[test]
     fn test_lub() {
         use crate::LubIterator;
-        let nums = vec![1, 4, 2, 42, 1341, 3];
+        let nums = [1, 4, 2, 42, 1341, 3];
         assert_eq!(nums.iter().lub(), 1341);
     }
 
