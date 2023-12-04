@@ -75,7 +75,9 @@ impl<K: JoinSemiLattice + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V>
             None
         })
     }
+}
 
+impl<K: Hash + Eq, V> PartialTable<K, V> {
     fn lookup<'a>(&'a self, k: &K) -> Option<&'a V> {
         self.0.get(k)
     }
@@ -86,7 +88,13 @@ impl<K: JoinSemiLattice + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V>
 }
 
 #[derive(Debug)]
-struct DependencyGraph<T>(PhantomData<T>);
+/// The domain of the dependency graph corresponds to the arguments,
+/// that are "up to date". Whenever some value is modified in the partial
+/// table, everything that transitively depends on that value must be
+/// recomputed and is thus removed from the dependency graph. If no
+/// element of dg+(a) is suspended, then pt(a) should be the final fix
+/// point.
+struct DependencyGraph<T>(HashMap<T, Vec<T>>);
 
 impl<T> Default for DependencyGraph<T> {
     fn default() -> Self {
@@ -94,40 +102,75 @@ impl<T> Default for DependencyGraph<T> {
     }
 }
 
-impl<T: JoinSemiLattice> DependencyGraph<T> {
+impl<T: Hash + Eq + Clone> DependencyGraph<T> {
     fn remove<'a>(&mut self, deps: impl Iterator<Item = &'a T>)
     where
         T: 'a,
     {
-        todo!()
+        // everything, which (transitively) depends on anything in `deps`
+        // must be recomputed and thus be removed from the graph
+
+        let mut deleted = HashSet::new();
+        let deps = deps.collect::<HashSet<_>>();
+
+        // delete all nodes dependent on nodes in `deps`
+        self.0.retain(|k, v| {
+            if v.iter().any(|d| deps.contains(d)) {
+                deleted.insert(k.clone());
+                false
+            } else {
+                true
+            }
+        });
+
+        // transitively delete anything dependent on anything deleted before
+        loop {
+            let mut changed = false;
+
+            self.0.retain(|k, v| {
+                if v.iter().any(|d| deleted.contains(d)) {
+                    changed |= deleted.insert(k.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+
+            if !changed {
+                break;
+            }
+        }
     }
 
     fn extend(&mut self, node: T) {
-        todo!()
+        self.0.insert(node, Vec::new());
     }
 
     fn add(&mut self, node: &T, dep: T) {
-        todo!()
+        self.0
+            .get_mut(node)
+            .expect("add - node should be in graph")
+            .push(dep);
     }
 
     fn dom_contains(&self, node: &T) -> bool {
-        todo!()
+        self.0.contains_key(node)
     }
 }
 
-trait MonotoneTransform<T> {
-    fn call<F>(&self, f: F, a: T) -> T
+trait MonotoneTransform<T, R> {
+    fn call<F>(&self, f: F, a: T) -> R
     where
-        F: FnMut(T) -> T;
+        F: FnMut(T) -> R;
 }
 
-struct FixComputation<T> {
+struct FixComputation<T, R> {
     suspended: Vec<T>,
     dependencies: DependencyGraph<T>,
-    partial_table: PartialTable<T, T>,
+    partial_table: PartialTable<T, R>,
 }
 
-impl<T> Default for FixComputation<T> {
+impl<T, R> Default for FixComputation<T, R> {
     fn default() -> Self {
         Self {
             suspended: Default::default(),
@@ -137,11 +180,12 @@ impl<T> Default for FixComputation<T> {
     }
 }
 
-impl<T> FixComputation<T>
+impl<T, R> FixComputation<T, R>
 where
     T: JoinSemiLattice + Hash + Eq + Clone + Debug,
+    R: JoinSemiLattice + Eq + Clone,
 {
-    fn repeat_computation(&mut self, alpha: &T, tau: &impl MonotoneTransform<T>) {
+    fn repeat_computation(&mut self, alpha: &T, tau: &impl MonotoneTransform<T, R>) {
         if self.dependencies.dom_contains(alpha) || self.suspended.contains(alpha) {
             return;
         }
@@ -166,40 +210,66 @@ where
     fn pretended_f<'a>(
         &'a mut self,
         alpha: &'a T,
-        tau: &'a impl MonotoneTransform<T>,
-    ) -> impl FnMut(T) -> T + 'a {
+        tau: &'a impl MonotoneTransform<T, R>,
+    ) -> impl FnMut(T) -> R + 'a {
         move |beta| {
             self.repeat_computation(&beta, tau);
-            let result = self.partial_table.lookup(&beta).unwrap().clone();
+            let result = self.partial_table.lookup(&beta).unwrap();
             if self.dependencies.dom_contains(alpha) {
                 self.dependencies.add(alpha, beta);
             }
-            result
+            result.clone()
         }
     }
 }
 
-fn compute_fixpoint<T>(
+fn compute_fixpoint<T, R>(
     alpha: T,
-    tau: impl MonotoneTransform<T>,
-) -> (PartialTable<T, T>, DependencyGraph<T>)
+    tau: impl MonotoneTransform<T, R>,
+) -> (PartialTable<T, R>, DependencyGraph<T>)
 where
     T: JoinSemiLattice + Eq + Hash + Debug + Clone,
+    R: JoinSemiLattice + Eq + Clone,
 {
-    let mut data: FixComputation<T> = FixComputation::default();
+    let mut data: FixComputation<T, R> = FixComputation::default();
     data.repeat_computation(&alpha, &tau);
     (data.partial_table, data.dependencies)
 }
 
+struct Factorial;
+
+impl MonotoneTransform<u64, u64> for Factorial {
+    fn call<F>(&self, mut f: F, a: u64) -> u64
+    where
+        F: FnMut(u64) -> u64,
+    {
+        if a == 0 {
+            1
+        } else {
+            a * f(a - 1)
+        }
+    }
+}
+
 mod test {
+    use crate::{compute_fixpoint, Factorial};
+
     #[test]
     fn test_lub() {
         use crate::LubIterator;
         let nums = vec![1, 4, 2, 42, 1341, 3];
         assert_eq!(nums.iter().lub(), 1341);
     }
+
+    #[test]
+    fn test_factorial() {
+        let (table, deps) = compute_fixpoint(4, Factorial);
+        assert_eq!(table.lookup(&4), Some(&24));
+    }
 }
 
 fn main() {
-    println!("Hello, world!");
+    let (table, deps) = compute_fixpoint(4, Factorial);
+    println!("{table:?}");
+    println!("{deps:?}");
 }
