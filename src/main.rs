@@ -170,10 +170,12 @@ impl<T: Hash + Eq + Clone> DependencyGraph<T> {
     }
 }
 
-trait MonotoneTransform<T, R> {
-    fn call<F>(&self, f: F, a: T) -> R
+trait MonotoneTransform<T> {
+    type Output;
+
+    fn call<F>(&self, f: F, a: T) -> Self::Output
     where
-        F: FnMut(T) -> R;
+        F: FnMut(T) -> Self::Output;
 }
 
 struct FixComputation<T, R> {
@@ -197,7 +199,7 @@ where
     T: JoinSemiLattice + Hash + Eq + Clone + Debug,
     R: JoinSemiLattice + Eq + Clone,
 {
-    fn repeat_computation(&mut self, alpha: &T, tau: &impl MonotoneTransform<T, R>) {
+    fn repeat_computation(&mut self, alpha: &T, tau: &impl MonotoneTransform<T, Output = R>) {
         if self.dependencies.dom_contains(alpha) || self.suspended.contains(alpha) {
             return;
         }
@@ -222,7 +224,7 @@ where
     fn pretended_f<'a>(
         &'a mut self,
         alpha: &'a T,
-        tau: &'a impl MonotoneTransform<T, R>,
+        tau: &'a impl MonotoneTransform<T, Output = R>,
     ) -> impl FnMut(T) -> R + 'a {
         move |beta| {
             self.repeat_computation(&beta, tau);
@@ -237,7 +239,7 @@ where
 
 fn compute_fixpoint<T, R>(
     alpha: T,
-    tau: impl MonotoneTransform<T, R>,
+    tau: impl MonotoneTransform<T, Output = R>,
 ) -> (PartialTable<T, R>, DependencyGraph<T>)
 where
     T: JoinSemiLattice + Eq + Hash + Debug + Clone,
@@ -250,10 +252,12 @@ where
 
 struct Factorial;
 
-impl<T> MonotoneTransform<T, T> for Factorial
+impl<T> MonotoneTransform<T> for Factorial
 where
     T: Eq + JoinSemiLattice + Mul<Output = T> + Sub<Output = T> + From<u8> + Copy,
 {
+    type Output = T;
+
     fn call<F>(&self, mut f: F, a: T) -> T
     where
         F: FnMut(T) -> T,
@@ -268,10 +272,12 @@ where
 
 struct Fib;
 
-impl<T> MonotoneTransform<T, T> for Fib
+impl<T> MonotoneTransform<T> for Fib
 where
     T: Eq + JoinSemiLattice + Mul<Output = T> + Sub<Output = T> + Add<Output = T> + From<u8> + Copy,
 {
+    type Output = T;
+
     fn call<F>(&self, mut f: F, a: T) -> T
     where
         F: FnMut(T) -> T,
