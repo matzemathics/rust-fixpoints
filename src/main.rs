@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
-    ops::Deref,
+    ops::{Add, Deref, Mul, Sub},
 };
 
 trait JoinSemiLattice {
@@ -26,6 +26,20 @@ where
 }
 
 impl JoinSemiLattice for u64 {
+    fn bot() -> Self {
+        0
+    }
+
+    fn join(&self, other: &Self) -> Self {
+        std::cmp::max(*self, *other)
+    }
+
+    fn leq(&self, other: &Self) -> bool {
+        self <= other
+    }
+}
+
+impl JoinSemiLattice for u128 {
     fn bot() -> Self {
         0
     }
@@ -236,15 +250,36 @@ where
 
 struct Factorial;
 
-impl MonotoneTransform<u64, u64> for Factorial {
-    fn call<F>(&self, mut f: F, a: u64) -> u64
+impl<T> MonotoneTransform<T, T> for Factorial
+where
+    T: Eq + JoinSemiLattice + Mul<Output = T> + Sub<Output = T> + From<u8> + Copy,
+{
+    fn call<F>(&self, mut f: F, a: T) -> T
     where
-        F: FnMut(u64) -> u64,
+        F: FnMut(T) -> T,
     {
-        if a == 0 {
-            1
+        if a == T::bot() {
+            T::from(1)
         } else {
-            a * f(a - 1)
+            a * f(a - T::from(1))
+        }
+    }
+}
+
+struct Fib;
+
+impl<T> MonotoneTransform<T, T> for Fib
+where
+    T: Eq + JoinSemiLattice + Mul<Output = T> + Sub<Output = T> + Add<Output = T> + From<u8> + Copy,
+{
+    fn call<F>(&self, mut f: F, a: T) -> T
+    where
+        F: FnMut(T) -> T,
+    {
+        if a == T::bot() || a == T::from(1) {
+            T::from(1)
+        } else {
+            f(a - T::from(1)) + f(a - T::from(2))
         }
     }
 }
@@ -256,19 +291,22 @@ mod test {
     #[test]
     fn test_lub() {
         use crate::LubIterator;
-        let nums = [1, 4, 2, 42, 1341, 3];
+        let nums = [1 as u64, 4, 2, 42, 1341, 3];
         assert_eq!(nums.iter().lub(), 1341);
     }
 
     #[test]
     fn test_factorial() {
-        let (table, _) = compute_fixpoint(4, Factorial);
+        let (table, _) = compute_fixpoint(4 as u64, Factorial);
         assert_eq!(table.lookup(&4), Some(&24));
     }
 }
 
 fn main() {
-    let (table, deps) = compute_fixpoint(4, Factorial);
+    let arg = std::env::args().last();
+    let alpha: u128 = arg.and_then(|x| x.parse().ok()).unwrap_or(4);
+    let (table, deps) = compute_fixpoint(alpha, Fib);
     println!("{table:?}");
     println!("{deps:?}");
+    println!("result: {}", table.lookup(&alpha).unwrap());
 }
