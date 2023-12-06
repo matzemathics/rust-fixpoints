@@ -1,11 +1,11 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
 
 use crate::abstract_domain::AbstractDomain;
 use crate::fixpoint::MonotoneTransform;
 use crate::lattice::{JoinSemiLattice, LubIterator};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct PredicateSymbol(String);
 
 #[derive(Debug, Clone)]
 struct FunctionLike<Symbol> {
@@ -13,19 +13,23 @@ struct FunctionLike<Symbol> {
     variables: Vec<u32>,
 }
 
-struct Clause<AD: AbstractDomain> {
-    body_atoms: Vec<FunctionLike<PredicateSymbol>>,
+struct NormalizedClause<C: Clause> {
+    body_atoms: Vec<FunctionLike<C::PredicateSymbol>>,
     variable_equalities: Vec<(u32, u32)>,
-    func_equalities: Vec<(u32, FunctionLike<AD::FunctionSymbol>)>,
+    func_equalities: Vec<(u32, FunctionLike<C::FunctionSymbol>)>,
     num_variables: u32,
 }
 
-impl<AD: AbstractDomain + Clone> Clause<AD> {
-    fn execute(
+impl<C: Clause> NormalizedClause<C> {
+    fn execute<AD>(
         &self,
-        mut f: impl FnMut(Query<AD>) -> Substitution<AD>,
+        mut f: impl FnMut(Query<C::PredicateSymbol, AD>) -> Substitution<AD>,
         input: &Substitution<AD>,
-    ) -> Substitution<AD> {
+    ) -> Substitution<AD>
+    where
+        AD: AbstractDomain<FunctionSymbol = C::FunctionSymbol> + Clone,
+        C::PredicateSymbol: Clone,
+    {
         let mut subst = input.extended(self.num_variables);
 
         for atom in &self.body_atoms {
@@ -50,16 +54,66 @@ impl<AD: AbstractDomain + Clone> Clause<AD> {
     }
 }
 
-struct Gaia<AD: AbstractDomain> {
-    program: HashMap<(PredicateSymbol, u32), Vec<Clause<AD>>>,
+pub struct Gaia<C: Clause> {
+    program: HashMap<(C::PredicateSymbol, u32), Vec<NormalizedClause<C>>>,
 }
 
-#[derive(Debug)]
-struct Substitution<AD>(Vec<AD>);
+pub trait Clause: Sized {
+    type PredicateSymbol: Hash + Eq + Debug + Clone;
+    type FunctionSymbol: Hash + Eq + Debug + Clone;
+}
+
+fn into_normalized<C: Clause>(c: C) -> ((C::PredicateSymbol, u32), NormalizedClause<C>) {
+    todo!()
+}
+
+impl<C: Clause> Gaia<C> {
+    pub fn init(src: impl IntoIterator<Item = C>) -> Self {
+        let mut program: HashMap<_, Vec<NormalizedClause<C>>> = HashMap::new();
+        for (pred, clause) in src.into_iter().map(into_normalized) {
+            program.entry(pred).or_default().push(clause);
+        }
+
+        Gaia { program }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Substitution<AD>(Vec<AD>);
 
 impl<AD> Substitution<AD> {
     fn len(&self) -> u32 {
         self.0.len() as u32
+    }
+}
+
+impl<AD: PartialOrd> PartialOrd for Substitution<AD> {
+    fn le(&self, other: &Self) -> bool {
+        if self.0.len() != other.0.len() {
+            return false;
+        }
+
+        self.0.iter().zip(&other.0).all(|(a, b)| a.le(b))
+    }
+
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self == other {
+            Some(Ordering::Equal)
+        } else {
+            if self <= other {
+                if other <= self {
+                    None
+                } else {
+                    Some(Ordering::Less)
+                }
+            } else {
+                if other <= self {
+                    Some(Ordering::Greater)
+                } else {
+                    None
+                }
+            }
+        }
     }
 }
 
@@ -74,14 +128,6 @@ impl<AD: JoinSemiLattice> JoinSemiLattice for Substitution<AD> {
                 .map(|i| AD::join_opt(self.0.get(i), other.0.get(i)))
                 .collect(),
         )
-    }
-
-    fn leq(&self, other: &Self) -> bool {
-        if self.0.len() > other.0.len() {
-            return false;
-        }
-
-        self.0.iter().zip(&other.0).all(|(a, b)| a.leq(b))
     }
 }
 
@@ -136,21 +182,40 @@ impl<AD: AbstractDomain + Clone> Substitution<AD> {
             })
             .collect();
 
-        current.unify_nested(&rhs.tag, subterms);
+        current.unify_nested(&rhs.tag, &subterms);
     }
 }
 
-struct Query<AD: AbstractDomain> {
-    subst: Substitution<AD>,
-    predicate: PredicateSymbol,
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Query<PredicateSymbol, AD> {
+    pub subst: Substitution<AD>,
+    pub predicate: PredicateSymbol,
 }
 
-impl<AD: AbstractDomain + Clone> MonotoneTransform<Query<AD>> for Gaia<AD> {
+impl<AD: PartialOrd, PredicateSymbol: Eq> PartialOrd for Query<PredicateSymbol, AD> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.predicate != other.predicate {
+            return None;
+        }
+
+        self.subst.partial_cmp(&other.subst)
+    }
+}
+
+pub fn default_substitution<AD: AbstractDomain>(arity: u32) -> Substitution<AD> {
+    todo!()
+}
+
+impl<C, AD> MonotoneTransform<Query<C::PredicateSymbol, AD>> for Gaia<C>
+where
+    C: Clause,
+    AD: AbstractDomain<FunctionSymbol = C::FunctionSymbol> + Clone,
+{
     type Output = Substitution<AD>;
 
-    fn call<F>(&self, mut f: F, query: Query<AD>) -> Self::Output
+    fn call<F>(&self, mut f: F, query: Query<C::PredicateSymbol, AD>) -> Self::Output
     where
-        F: FnMut(Query<AD>) -> Self::Output,
+        F: FnMut(Query<C::PredicateSymbol, AD>) -> Self::Output,
     {
         self.program
             .get(&(query.predicate, query.subst.len()))

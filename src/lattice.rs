@@ -1,9 +1,8 @@
 use std::ops::Deref;
 
-pub trait JoinSemiLattice: Sized {
+pub trait JoinSemiLattice: Sized + PartialOrd {
     fn bot() -> Self;
     fn join(&self, other: &Self) -> Self;
-    fn leq(&self, other: &Self) -> bool;
 
     fn join_opt(lhs: Option<&Self>, rhs: Option<&Self>) -> Self {
         match (lhs, rhs) {
@@ -50,10 +49,6 @@ impl JoinSemiLattice for u64 {
     fn join(&self, other: &Self) -> Self {
         std::cmp::max(*self, *other)
     }
-
-    fn leq(&self, other: &Self) -> bool {
-        self <= other
-    }
 }
 
 impl JoinSemiLattice for u128 {
@@ -63,10 +58,6 @@ impl JoinSemiLattice for u128 {
 
     fn join(&self, other: &Self) -> Self {
         std::cmp::max(*self, *other)
-    }
-
-    fn leq(&self, other: &Self) -> bool {
-        self <= other
     }
 }
 
