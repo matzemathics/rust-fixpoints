@@ -2,42 +2,36 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::iter::repeat_with;
+use std::sync::Arc;
 
-use crate::abstract_domain::AbstractDomain;
+use crate::abstract_domain::{AbstractDomain, Shape, Shaped};
 use crate::fixpoint::MonotoneTransform;
 use crate::lattice::{JoinSemiLattice, LubIterator};
 
+type Variable = u8;
+
 #[derive(Debug, Clone)]
-struct FunctionLike<Symbol> {
-    tag: Symbol,
-    variables: Vec<u32>,
+struct NormalizedClause<S> {
+    body_atoms: Vec<Shaped<S, Variable>>,
+    variable_equalities: Vec<(Variable, Variable)>,
+    func_equalities: Vec<(Variable, Shaped<S, Variable>)>,
+    num_variables: Variable,
 }
 
-struct NormalizedClause<C: Clause> {
-    body_atoms: Vec<FunctionLike<C::PredicateSymbol>>,
-    variable_equalities: Vec<(u32, u32)>,
-    func_equalities: Vec<(u32, FunctionLike<C::FunctionSymbol>)>,
-    num_variables: u32,
-}
-
-impl<C: Clause> NormalizedClause<C> {
+impl<S: Shape> NormalizedClause<S> {
     fn execute<AD>(
         &self,
-        mut f: impl FnMut(Query<C::PredicateSymbol, AD>) -> Substitution<AD>,
-        input: &Substitution<AD>,
+        mut f: impl FnMut(Query<AD>) -> Substitution<AD>,
+        upper_bound: Query<AD>,
     ) -> Substitution<AD>
     where
-        AD: AbstractDomain<FunctionSymbol = C::FunctionSymbol> + Clone,
-        C::PredicateSymbol: Clone,
+        AD: AbstractDomain<Shape = S> + Clone,
     {
-        let mut subst = input.extended(self.num_variables);
+        let mut subst = upper_bound.extended(self.num_variables);
 
         for atom in &self.body_atoms {
-            let local_subst = subst.rename_project(&atom.variables);
-            let query = Query {
-                predicate: atom.tag.clone(),
-                subst: local_subst,
-            };
+            let query = subst.rename_project(atom);
             subst.extend_renamed(&atom.variables, f(query));
         }
 
@@ -49,21 +43,20 @@ impl<C: Clause> NormalizedClause<C> {
             subst.apply_func_constraint(*lhs, rhs);
         }
 
-        subst.restrict(input.len());
+        subst.restrict(upper_bound.len());
         subst
     }
 }
 
-pub struct Gaia<C: Clause> {
-    program: HashMap<(C::PredicateSymbol, u32), Vec<NormalizedClause<C>>>,
+pub struct Gaia<S> {
+    program: Arc<[(S, NormalizedClause<S>)]>,
 }
 
 pub trait Clause: Sized {
-    type PredicateSymbol: Hash + Eq + Debug + Clone;
-    type FunctionSymbol: Hash + Eq + Debug + Clone;
+    type Shape: Shape + Clone + Debug;
 }
 
-fn into_normalized<C: Clause>(c: C) -> ((C::PredicateSymbol, u32), NormalizedClause<C>) {
+fn into_normalized<C: Clause>(c: C) -> (C::Shape, NormalizedClause<C>) {
     todo!()
 }
 
@@ -97,21 +90,25 @@ impl<AD: PartialOrd> PartialOrd for Substitution<AD> {
     }
 
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.0.len() != other.0.len() {
+            return None;
+        }
+
         if self == other {
-            Some(Ordering::Equal)
-        } else {
-            if self <= other {
-                if other <= self {
-                    None
-                } else {
-                    Some(Ordering::Less)
-                }
+            return Some(Ordering::Equal);
+        }
+
+        if self <= other {
+            if other <= self {
+                None
             } else {
-                if other <= self {
-                    Some(Ordering::Greater)
-                } else {
-                    None
-                }
+                Some(Ordering::Less)
+            }
+        } else {
+            if other <= self {
+                Some(Ordering::Greater)
+            } else {
+                None
             }
         }
     }
@@ -168,7 +165,7 @@ impl<AD: AbstractDomain + Clone> Substitution<AD> {
         left[lower].unify_replace_both(&mut right[0]);
     }
 
-    fn apply_func_constraint(&mut self, lhs: u32, rhs: &FunctionLike<AD::FunctionSymbol>) {
+    fn apply_func_constraint(&mut self, lhs: u32, rhs: &Shaped<AD::Shape>) {
         let (left, right) = self.0.split_at_mut(lhs as usize);
         let (current, right) = right.split_first_mut().unwrap();
 
@@ -176,9 +173,9 @@ impl<AD: AbstractDomain + Clone> Substitution<AD> {
             .variables
             .iter()
             .map(|v| match *v {
-                x if (x > lhs) => Some(&right[(x - lhs - 1) as usize]),
+                x if (x > lhs) => Some(&mut right[(x - lhs - 1) as usize]),
                 x if (x == lhs) => None,
-                _ => Some(&left[*v as usize]),
+                _ => Some(&mut left[*v as usize]),
             })
             .collect();
 
@@ -186,10 +183,15 @@ impl<AD: AbstractDomain + Clone> Substitution<AD> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Query<PredicateSymbol, AD> {
-    pub subst: Substitution<AD>,
-    pub predicate: PredicateSymbol,
+pub type Query<AD: AbstractDomain> = Shaped<AD::Shape, AD>;
+
+impl<PredicateSymbol, AD: AbstractDomain> Query<PredicateSymbol, AD> {
+    pub fn new(predicate: PredicateSymbol, arity: u32) -> Self {
+        Self {
+            predicate,
+            subst: Substitution(repeat_with(AD::any).take(arity as usize).collect()),
+        }
+    }
 }
 
 impl<AD: PartialOrd, PredicateSymbol: Eq> PartialOrd for Query<PredicateSymbol, AD> {
@@ -202,26 +204,23 @@ impl<AD: PartialOrd, PredicateSymbol: Eq> PartialOrd for Query<PredicateSymbol, 
     }
 }
 
-pub fn default_substitution<AD: AbstractDomain>(arity: u32) -> Substitution<AD> {
-    todo!()
-}
-
-impl<C, AD> MonotoneTransform<Query<C::PredicateSymbol, AD>> for Gaia<C>
+impl<AD> MonotoneTransform<Query<AD>> for Gaia<AD::Shape>
 where
-    C: Clause,
-    AD: AbstractDomain<FunctionSymbol = C::FunctionSymbol> + Clone,
+    AD: AbstractDomain + Clone,
 {
     type Output = Substitution<AD>;
 
-    fn call<F>(&self, mut f: F, query: Query<C::PredicateSymbol, AD>) -> Self::Output
+    fn call<F>(&self, mut f: F, query: Query<AD>) -> Self::Output
     where
-        F: FnMut(Query<C::PredicateSymbol, AD>) -> Self::Output,
+        F: FnMut(Query<AD>) -> Self::Output,
     {
         self.program
-            .get(&(query.predicate, query.subst.len()))
-            .into_iter()
-            .flatten()
-            .map(|c| c.execute(&mut f, &query.subst))
+            .iter()
+            .filter_map(|(shape, clause)| {
+                shape
+                    .project_reorder(query)
+                    .map(|input| clause.execute(f, input.subterms))
+            })
             .lub()
     }
 }
