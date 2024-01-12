@@ -1,14 +1,15 @@
-use abstract_domain::AbstractDomain;
 use lattice::JoinSemiLattice;
 
 use crate::fixpoint::compute_fixpoint;
-use crate::gaia::{default_substitution, Clause, Gaia, Query};
+// use crate::gaia::{default_substitution, Clause, Gaia, Query};
 
-mod abstract_domain;
 mod fixpoint;
 mod gaia;
 mod lattice;
 
+fn main() {}
+
+/*
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 struct PredicateSymbol(String);
 
@@ -54,3 +55,4 @@ fn main() {
 
     let (result, _) = compute_fixpoint(query, gaia);
 }
+*/

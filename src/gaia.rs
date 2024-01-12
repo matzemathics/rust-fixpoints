@@ -1,52 +1,46 @@
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use crate::abstract_domain::AbstractDomain;
 use crate::fixpoint::MonotoneTransform;
-use crate::lattice::{JoinSemiLattice, LubIterator};
+use crate::lattice::LubIterator;
 
-#[derive(Debug, Clone)]
-struct FunctionLike<Symbol> {
-    tag: Symbol,
-    variables: Vec<u32>,
-}
+use self::abstract_substitution::AbstractSubstitution;
+
+mod abstract_substitution;
+
+type Variable = u32;
 
 struct NormalizedClause<C: Clause> {
-    body_atoms: Vec<FunctionLike<C::PredicateSymbol>>,
-    variable_equalities: Vec<(u32, u32)>,
-    func_equalities: Vec<(u32, FunctionLike<C::FunctionSymbol>)>,
+    body_atoms: Vec<(C::PredicateSymbol, Vec<Variable>)>,
+    variable_equalities: Vec<(Variable, Variable)>,
+    ctor_equalities: Vec<(Variable, C::FunctionSymbol, Vec<Variable>)>,
     num_variables: u32,
 }
 
 impl<C: Clause> NormalizedClause<C> {
-    fn execute<AD>(
-        &self,
-        mut f: impl FnMut(Query<C::PredicateSymbol, AD>) -> Substitution<AD>,
-        input: &Substitution<AD>,
-    ) -> Substitution<AD>
+    fn execute<S>(&self, mut f: impl FnMut(Query<C::PredicateSymbol, S>) -> S, input: &S) -> S
     where
-        AD: AbstractDomain<FunctionSymbol = C::FunctionSymbol> + Clone,
         C::PredicateSymbol: Clone,
+        S: AbstractSubstitution<FunctionSymbol = C::FunctionSymbol>,
     {
         let mut subst = input.extended(self.num_variables);
 
-        for atom in &self.body_atoms {
-            let local_subst = subst.rename_project(&atom.variables);
+        for (pred, vars) in &self.body_atoms {
+            let local_subst = subst.project(vars);
             let query = Query {
-                predicate: atom.tag.clone(),
+                predicate: pred.clone(),
                 subst: local_subst,
             };
-            subst.extend_renamed(&atom.variables, f(query));
+            subst.propagate(&vars, f(query));
         }
 
         for &(lhs, rhs) in &self.variable_equalities {
-            subst.apply_eq_constraint(lhs, rhs);
+            subst.apply_eq(lhs, rhs);
         }
 
-        for (lhs, rhs) in &self.func_equalities {
-            subst.apply_func_constraint(*lhs, rhs);
+        for (lhs, f, vars) in &self.ctor_equalities {
+            subst.apply_func(*lhs, f, vars);
         }
 
         subst.restrict(input.len());
@@ -55,15 +49,15 @@ impl<C: Clause> NormalizedClause<C> {
 }
 
 pub struct Gaia<C: Clause> {
-    program: HashMap<(C::PredicateSymbol, u32), Vec<NormalizedClause<C>>>,
+    program: HashMap<(C::PredicateSymbol, Variable), Vec<NormalizedClause<C>>>,
 }
 
 pub trait Clause: Sized {
     type PredicateSymbol: Hash + Eq + Debug + Clone;
-    type FunctionSymbol: Hash + Eq + Debug + Clone;
+    type FunctionSymbol;
 }
 
-fn into_normalized<C: Clause>(c: C) -> ((C::PredicateSymbol, u32), NormalizedClause<C>) {
+fn into_normalized<C: Clause>(c: C) -> ((C::PredicateSymbol, Variable), NormalizedClause<C>) {
     todo!()
 }
 
@@ -78,117 +72,9 @@ impl<C: Clause> Gaia<C> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Substitution<AD>(Vec<AD>);
-
-impl<AD> Substitution<AD> {
-    fn len(&self) -> u32 {
-        self.0.len() as u32
-    }
-}
-
-impl<AD: PartialOrd> PartialOrd for Substitution<AD> {
-    fn le(&self, other: &Self) -> bool {
-        if self.0.len() != other.0.len() {
-            return false;
-        }
-
-        self.0.iter().zip(&other.0).all(|(a, b)| a.le(b))
-    }
-
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self == other {
-            Some(Ordering::Equal)
-        } else {
-            if self <= other {
-                if other <= self {
-                    None
-                } else {
-                    Some(Ordering::Less)
-                }
-            } else {
-                if other <= self {
-                    Some(Ordering::Greater)
-                } else {
-                    None
-                }
-            }
-        }
-    }
-}
-
-impl<AD: JoinSemiLattice> JoinSemiLattice for Substitution<AD> {
-    fn bot() -> Self {
-        Substitution(Vec::new())
-    }
-
-    fn join(&self, other: &Self) -> Self {
-        Substitution(
-            (0..std::cmp::max(self.0.len(), other.0.len()))
-                .map(|i| AD::join_opt(self.0.get(i), other.0.get(i)))
-                .collect(),
-        )
-    }
-}
-
-impl<AD: AbstractDomain + Clone> Substitution<AD> {
-    fn extended(&self, num_vars: u32) -> Self {
-        let mut res = Vec::with_capacity(num_vars as usize);
-        res.extend_from_slice(&self.0);
-        res.resize_with(num_vars as usize, AD::bot);
-        Substitution(res)
-    }
-
-    fn restrict(&mut self, num_vars: u32) {
-        self.0.resize_with(num_vars as usize, || {
-            panic!("restrict: num_vars must be less then length")
-        });
-    }
-
-    fn rename_project(&self, vars: &[u32]) -> Self {
-        Substitution(vars.iter().map(|&v| self.0[v as usize].clone()).collect())
-    }
-
-    fn extend_renamed(&mut self, vars: &[u32], updated: Self) {
-        for (var, update) in vars.iter().zip(updated.0) {
-            self.0[*var as usize].unify_with(update);
-        }
-    }
-
-    fn apply_eq_constraint(&mut self, lhs: u32, rhs: u32) {
-        if lhs == rhs {
-            return;
-        }
-
-        let higher = std::cmp::max(lhs, rhs) as usize;
-        let lower = std::cmp::min(lhs, rhs) as usize;
-
-        let (left, right) = self.0.split_at_mut(higher);
-
-        left[lower].unify_replace_both(&mut right[0]);
-    }
-
-    fn apply_func_constraint(&mut self, lhs: u32, rhs: &FunctionLike<AD::FunctionSymbol>) {
-        let (left, right) = self.0.split_at_mut(lhs as usize);
-        let (current, right) = right.split_first_mut().unwrap();
-
-        let subterms: Vec<_> = rhs
-            .variables
-            .iter()
-            .map(|v| match *v {
-                x if (x > lhs) => Some(&right[(x - lhs - 1) as usize]),
-                x if (x == lhs) => None,
-                _ => Some(&left[*v as usize]),
-            })
-            .collect();
-
-        current.unify_nested(&rhs.tag, &subterms);
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Query<PredicateSymbol, AD> {
-    pub subst: Substitution<AD>,
+pub struct Query<PredicateSymbol, S> {
+    pub subst: S,
     pub predicate: PredicateSymbol,
 }
 
@@ -202,20 +88,16 @@ impl<AD: PartialOrd, PredicateSymbol: Eq> PartialOrd for Query<PredicateSymbol, 
     }
 }
 
-pub fn default_substitution<AD: AbstractDomain>(arity: u32) -> Substitution<AD> {
-    todo!()
-}
-
-impl<C, AD> MonotoneTransform<Query<C::PredicateSymbol, AD>> for Gaia<C>
+impl<C, S> MonotoneTransform<Query<C::PredicateSymbol, S>> for Gaia<C>
 where
     C: Clause,
-    AD: AbstractDomain<FunctionSymbol = C::FunctionSymbol> + Clone,
+    S: AbstractSubstitution<FunctionSymbol = C::FunctionSymbol>,
 {
-    type Output = Substitution<AD>;
+    type Output = S;
 
-    fn call<F>(&self, mut f: F, query: Query<C::PredicateSymbol, AD>) -> Self::Output
+    fn call<F>(&self, mut f: F, query: Query<C::PredicateSymbol, S>) -> Self::Output
     where
-        F: FnMut(Query<C::PredicateSymbol, AD>) -> Self::Output,
+        F: FnMut(Query<C::PredicateSymbol, S>) -> Self::Output,
     {
         self.program
             .get(&(query.predicate, query.subst.len()))
