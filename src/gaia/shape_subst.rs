@@ -141,6 +141,17 @@ impl<F, D> Pattern<F, D> {
     }
 }
 
+impl<F: Clone, D: Structural<F> + Clone> Pattern<F, D> {
+    pub fn collect_at(&self, index: u16) -> D {
+        match &self.nodes[index as usize] {
+            PatNode::Input(i) => self.inputs[*i as usize].clone(),
+            PatNode::Pattern { func, args } => {
+                D::cons(func.clone(), args.iter().map(|&i| self.collect_at(i)))
+            }
+        }
+    }
+}
+
 trait Structural<F>: Sized {
     fn cons(func: F, args: impl Iterator<Item = Self>) -> Self;
     fn uncons(&self, func: &F) -> Vec<Self>;
@@ -152,9 +163,11 @@ pub trait Shape: Sized {
 
     // fn meet(&self, other: &Self) -> Option<Self>;
     fn sub_shape(&self, other: &Self) -> Option<Vec<(u16, u16)>>;
+
+    fn join(&self, other: &Self) -> Option<Self>;
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct SimpleFunctor {
     tag: Arc<str>,
     arity: u16,
@@ -171,6 +184,10 @@ impl Shape for SimpleFunctor {
 
     fn arity(&self) -> u16 {
         self.arity
+    }
+
+    fn join(&self, _: &Self) -> Option<Self> {
+        None
     }
 }
 
@@ -279,7 +296,7 @@ where
 impl<F, D> JoinSemiLattice for Pattern<F, D>
 where
     F: Shape + Clone,
-    D: PreOrder + Structural<F> + Clone,
+    D: JoinSemiLattice + Structural<F> + Clone,
 {
     fn bot() -> Self {
         Pattern {
@@ -301,6 +318,41 @@ where
             panic!("join: arity mismatch")
         }
 
+        let mut inputs = Vec::new();
+        let mut nodes = Vec::new();
+
+        let mut subterm_pairs: VecDeque<_> = (0..self.outputs).map(|i| (i, i)).collect();
+
+        while let Some((left, right)) = subterm_pairs.pop_front() {
+            match (&self.nodes[left as usize], &other.nodes[right as usize]) {
+                (PatNode::Input(lhs), PatNode::Input(rhs)) => {
+                    let idx = inputs.len();
+                    inputs.push(self.inputs[*lhs as usize].join(&other.inputs[*rhs as usize]));
+                    nodes.push(PatNode::Input(idx as u16));
+                }
+                (PatNode::Input(_), PatNode::Pattern { func, args }) => todo!(),
+                (PatNode::Pattern { func, args }, PatNode::Input(_)) => todo!(),
+                (
+                    PatNode::Pattern {
+                        func: lhs_f,
+                        args: lhs_args,
+                    },
+                    PatNode::Pattern {
+                        func: rhs_f,
+                        args: rhs_args,
+                    },
+                ) => {
+                    if let Some(func) = lhs_f.join(rhs_f) {
+                        nodes.push(PatNode::Pattern {
+                            func,
+                            args: todo!(),
+                        })
+                    } else {
+                        todo!()
+                    }
+                }
+            }
+        }
         todo!()
     }
 }
@@ -308,7 +360,7 @@ where
 impl<F, D> AbstractSubstitution<F> for Pattern<F, D>
 where
     F: Shape + Clone,
-    D: PreOrder + Structural<F> + Clone,
+    D: JoinSemiLattice + Structural<F> + Clone,
 {
     fn apply_eq(&mut self, lhs: super::Variable, rhs: super::Variable) {
         todo!()
