@@ -321,17 +321,30 @@ where
         let mut inputs = Vec::new();
         let mut nodes = Vec::new();
 
-        let mut subterm_pairs: VecDeque<_> = (0..self.outputs).map(|i| (i, i)).collect();
+        let mut subterm_pairs: VecDeque<_> =
+            (0..self.outputs).map(|i| (Some(i), Some(i))).collect();
+
+        let mut subterm_index = 0;
 
         while let Some((left, right)) = subterm_pairs.pop_front() {
+            if left.is_none() {
+                let idx = inputs.len();
+                inputs.push(other.collect_at(right.unwrap()));
+                nodes.push(PatNode::Input(idx as u16));
+            }
+            if right.is_none() {
+                let idx = inputs.len();
+                inputs.push(self.collect_at(left.unwrap()));
+                nodes.push(PatNode::Input(idx as u16));
+            }
+            let left = left.unwrap();
+            let right = right.unwrap();
             match (&self.nodes[left as usize], &other.nodes[right as usize]) {
                 (PatNode::Input(lhs), PatNode::Input(rhs)) => {
                     let idx = inputs.len();
                     inputs.push(self.inputs[*lhs as usize].join(&other.inputs[*rhs as usize]));
                     nodes.push(PatNode::Input(idx as u16));
                 }
-                (PatNode::Input(_), PatNode::Pattern { func, args }) => todo!(),
-                (PatNode::Pattern { func, args }, PatNode::Input(_)) => todo!(),
                 (
                     PatNode::Pattern {
                         func: lhs_f,
@@ -343,15 +356,74 @@ where
                     },
                 ) => {
                     if let Some(func) = lhs_f.join(rhs_f) {
-                        nodes.push(PatNode::Pattern {
-                            func,
-                            args: todo!(),
-                        })
+                        let mut left_sub =
+                            func.sub_shape(lhs_f).expect("subshape of join").into_iter();
+                        let mut right_sub =
+                            func.sub_shape(rhs_f).expect("subshape of join").into_iter();
+
+                        let mut left = left_sub.next();
+                        let mut right = right_sub.next();
+
+                        let mut args = Vec::new();
+
+                        for i in 0..func.arity() {
+                            match left {
+                                Some(p) if p.0 == i => {
+                                    left = left_sub.next();
+                                    match right {
+                                        Some(q) if q.0 == i => {
+                                            right = right_sub.next();
+                                            if lhs_args[p.1 as usize] == rhs_args[q.1 as usize] {
+                                                args.push(lhs_args[p.1 as usize]);
+                                            } else {
+                                                let offset = subterm_pairs.len();
+                                                subterm_pairs.push_back((
+                                                    Some(lhs_args[p.1 as usize]),
+                                                    Some(rhs_args[q.1 as usize]),
+                                                ));
+                                                args.push(subterm_index + offset as u16);
+                                            }
+                                        }
+                                        _ => {
+                                            let offset = subterm_pairs.len();
+                                            subterm_pairs
+                                                .push_back((Some(lhs_args[p.1 as usize]), None));
+                                            args.push(subterm_index + offset as u16);
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    assert!(right.is_some() && right.unwrap().0 == i);
+                                    let offset = subterm_pairs.len();
+                                    subterm_pairs.push_back((
+                                        None,
+                                        Some(rhs_args[right.unwrap().1 as usize]),
+                                    ));
+                                    args.push(subterm_index + offset as u16);
+                                    right = right_sub.next();
+                                }
+                            }
+                        }
+
+                        nodes.push(PatNode::Pattern { func, args })
                     } else {
-                        todo!()
+                        let lhs = self.collect_at(left);
+                        let rhs = other.collect_at(right);
+                        let idx = inputs.len();
+                        inputs.push(lhs.join(&rhs));
+                        nodes.push(PatNode::Input(idx as u16));
                     }
                 }
+                _ => {
+                    let lhs = self.collect_at(left);
+                    let rhs = other.collect_at(right);
+                    let idx = inputs.len();
+                    inputs.push(lhs.join(&rhs));
+                    nodes.push(PatNode::Input(idx as u16));
+                }
             }
+
+            subterm_index += 1;
         }
         todo!()
     }
