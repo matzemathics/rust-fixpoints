@@ -9,6 +9,7 @@ use self::abstract_substitution::AbstractSubstitution;
 
 mod abstract_substitution;
 mod shape_subst;
+mod type_subst;
 
 type Variable = u16;
 
