@@ -8,6 +8,7 @@ use std::ops::Sub;
 
 use crate::lattice::BorrowedLubIterator;
 use crate::lattice::JoinSemiLattice;
+use crate::lattice::PreOrder;
 
 #[derive(Debug)]
 pub(crate) struct PartialTable<K, V>(HashMap<K, V>);
@@ -18,14 +19,14 @@ impl<K, V> Default for PartialTable<K, V> {
     }
 }
 
-impl<K: PartialOrd + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V> {
+impl<K: PreOrder + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V> {
     pub(crate) fn extend(&mut self, k: K) {
         debug_assert!(!self.0.contains_key(&k));
 
         let value = self
             .0
             .iter()
-            .filter_map(|(a, b)| if a <= &k { Some(b) } else { None })
+            .filter_map(|(a, b)| if a.leq(&k) { Some(b) } else { None })
             .borrowed_lub();
 
         self.0.insert(k, value);
@@ -33,7 +34,7 @@ impl<K: PartialOrd + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V> {
 
     pub(crate) fn adjust<'a>(&'a mut self, k: &'a K, v: &'a V) -> impl Iterator<Item = &K> + 'a {
         self.0.iter_mut().filter_map(move |(a, b)| {
-            if k <= a {
+            if k.leq(a) {
                 let updated = b.join(v);
                 if updated != *b {
                     *b = updated;
@@ -152,7 +153,7 @@ impl<T, R> Default for FixComputation<T, R> {
 
 impl<T, R> FixComputation<T, R>
 where
-    T: PartialOrd + Hash + Eq + Clone + Debug,
+    T: PreOrder + Hash + Eq + Clone + Debug,
     R: JoinSemiLattice + Eq + Clone,
 {
     pub(crate) fn repeat_computation(
@@ -202,7 +203,7 @@ pub(crate) fn compute_fixpoint<T, R>(
     tau: impl MonotoneTransform<T, Output = R>,
 ) -> (PartialTable<T, R>, DependencyGraph<T>)
 where
-    T: PartialOrd + Eq + Hash + Debug + Clone,
+    T: PreOrder + Eq + Hash + Debug + Clone,
     R: JoinSemiLattice + Eq + Clone,
 {
     let mut data: FixComputation<T, R> = FixComputation::default();

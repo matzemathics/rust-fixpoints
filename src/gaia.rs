@@ -3,26 +3,26 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use crate::fixpoint::MonotoneTransform;
-use crate::lattice::LubIterator;
+use crate::lattice::{LubIterator, PreOrder};
 
 use self::abstract_substitution::AbstractSubstitution;
 
 mod abstract_substitution;
 
-type Variable = u32;
+type Variable = u16;
 
 struct NormalizedClause<C: Clause> {
     body_atoms: Vec<(C::PredicateSymbol, Vec<Variable>)>,
     variable_equalities: Vec<(Variable, Variable)>,
     ctor_equalities: Vec<(Variable, C::FunctionSymbol, Vec<Variable>)>,
-    num_variables: u32,
+    num_variables: u16,
 }
 
 impl<C: Clause> NormalizedClause<C> {
     fn execute<S>(&self, mut f: impl FnMut(Query<C::PredicateSymbol, S>) -> S, input: &S) -> S
     where
         C::PredicateSymbol: Clone,
-        S: AbstractSubstitution<FunctionSymbol = C::FunctionSymbol>,
+        S: AbstractSubstitution<C::FunctionSymbol>,
     {
         let mut subst = input.extended(self.num_variables);
 
@@ -78,20 +78,20 @@ pub struct Query<PredicateSymbol, S> {
     pub predicate: PredicateSymbol,
 }
 
-impl<AD: PartialOrd, PredicateSymbol: Eq> PartialOrd for Query<PredicateSymbol, AD> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl<AD: PreOrder, PredicateSymbol: Eq> PreOrder for Query<PredicateSymbol, AD> {
+    fn leq(&self, other: &Self) -> bool {
         if self.predicate != other.predicate {
-            return None;
+            return false;
         }
 
-        self.subst.partial_cmp(&other.subst)
+        self.subst.leq(&other.subst)
     }
 }
 
 impl<C, S> MonotoneTransform<Query<C::PredicateSymbol, S>> for Gaia<C>
 where
     C: Clause,
-    S: AbstractSubstitution<FunctionSymbol = C::FunctionSymbol>,
+    S: AbstractSubstitution<C::FunctionSymbol>,
 {
     type Output = S;
 

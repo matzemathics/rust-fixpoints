@@ -1,6 +1,10 @@
 use std::ops::Deref;
 
-pub trait JoinSemiLattice: Sized + PartialOrd {
+pub trait PreOrder {
+    fn leq(&self, other: &Self) -> bool;
+}
+
+pub trait JoinSemiLattice: Sized + PreOrder {
     fn bot() -> Self;
     fn join(&self, other: &Self) -> Self;
 
@@ -38,6 +42,12 @@ where
 {
     fn lub(self) -> T {
         self.fold(T::bot(), |a, b| a.join(&b))
+    }
+}
+
+impl<T: PartialOrd> PreOrder for T {
+    fn leq(&self, other: &Self) -> bool {
+        self.le(other)
     }
 }
 
