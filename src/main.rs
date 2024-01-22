@@ -3,6 +3,7 @@ use lattice::JoinSemiLattice;
 use crate::fixpoint::compute_fixpoint;
 // use crate::gaia::{default_substitution, Clause, Gaia, Query};
 
+pub(crate) mod bitmap;
 mod fixpoint;
 mod gaia;
 mod lattice;

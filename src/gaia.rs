@@ -8,6 +8,7 @@ use crate::lattice::{LubIterator, PreOrder};
 use self::abstract_substitution::AbstractSubstitution;
 
 mod abstract_substitution;
+mod bit_substitution;
 
 type Variable = u16;
 
