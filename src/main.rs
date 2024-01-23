@@ -1,4 +1,4 @@
-use lattice::JoinSemiLattice;
+use lattice::Join;
 
 use crate::fixpoint::compute_fixpoint;
 // use crate::gaia::{default_substitution, Clause, Gaia, Query};

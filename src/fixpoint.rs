@@ -7,7 +7,9 @@ use std::ops::Mul;
 use std::ops::Sub;
 
 use crate::lattice::BorrowedLubIterator;
+use crate::lattice::Join;
 use crate::lattice::JoinSemiLattice;
+use crate::lattice::LocalMinimum;
 use crate::lattice::PreOrder;
 
 #[derive(Debug)]
@@ -19,7 +21,11 @@ impl<K, V> Default for PartialTable<K, V> {
     }
 }
 
-impl<K: PreOrder + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V> {
+impl<K, V> PartialTable<K, V>
+where
+    K: PreOrder + Hash + Eq,
+    V: Join + Eq + LocalMinimum<K>,
+{
     pub(crate) fn extend(&mut self, k: K) {
         debug_assert!(!self.0.contains_key(&k));
 
@@ -27,7 +33,7 @@ impl<K: PreOrder + Hash + Eq, V: JoinSemiLattice + Eq> PartialTable<K, V> {
             .0
             .iter()
             .filter_map(|(a, b)| if a.leq(&k) { Some(b) } else { None })
-            .borrowed_lub();
+            .borrowed_lub(V::local_minimum(&k));
 
         self.0.insert(k, value);
     }
@@ -154,7 +160,7 @@ impl<T, R> Default for FixComputation<T, R> {
 impl<T, R> FixComputation<T, R>
 where
     T: PreOrder + Hash + Eq + Clone + Debug,
-    R: JoinSemiLattice + Eq + Clone,
+    R: Join + Eq + Clone + LocalMinimum<T>,
 {
     pub(crate) fn repeat_computation(
         &mut self,
@@ -204,7 +210,7 @@ pub(crate) fn compute_fixpoint<T, R>(
 ) -> (PartialTable<T, R>, DependencyGraph<T>)
 where
     T: PreOrder + Eq + Hash + Debug + Clone,
-    R: JoinSemiLattice + Eq + Clone,
+    R: Join + Eq + Clone + LocalMinimum<T>,
 {
     let mut data: FixComputation<T, R> = FixComputation::default();
     data.repeat_computation(&alpha, &tau);
@@ -215,7 +221,7 @@ pub(crate) struct Factorial;
 
 impl<T> MonotoneTransform<T> for Factorial
 where
-    T: Eq + JoinSemiLattice + Mul<Output = T> + Sub<Output = T> + From<u8> + Copy,
+    T: Eq + Mul<Output = T> + Sub<Output = T> + From<u8> + Copy + JoinSemiLattice,
 {
     type Output = T;
 
@@ -235,7 +241,7 @@ pub(crate) struct Fib;
 
 impl<T> MonotoneTransform<T> for Fib
 where
-    T: Eq + JoinSemiLattice + Mul<Output = T> + Sub<Output = T> + Add<Output = T> + From<u8> + Copy,
+    T: Eq + Mul<Output = T> + Sub<Output = T> + Add<Output = T> + From<u8> + Copy + JoinSemiLattice,
 {
     type Output = T;
 
@@ -257,7 +263,7 @@ mod test {
 
     #[test]
     fn test_factorial() {
-        let (table, _) = compute_fixpoint(4 as u64, Factorial);
+        let (table, _) = compute_fixpoint(4u64, Factorial);
         assert_eq!(table.lookup(&4), Some(&24));
     }
 }

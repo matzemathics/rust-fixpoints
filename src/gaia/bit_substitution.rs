@@ -1,6 +1,8 @@
+use core::num;
 use std::sync::Arc;
 
-use crate::lattice::{JoinSemiLattice, PreOrder};
+use crate::bitmap::Bitmap;
+use crate::lattice::{Join, LocalMinimum, PreOrder};
 
 use super::abstract_substitution::AbstractSubstitution;
 
@@ -20,10 +22,18 @@ enum ExtType {
     Neg = 10,      // term of type int < 0
 }
 
+impl ExtType {
+    fn discriminant(&self) -> u8 {
+        unsafe { *<*const _>::from(&self).cast() }
+    }
+}
+
 type IntConst = i64;
-type StrConst = String;
-type RdfConst = String;
+type StrConst = Arc<str>;
+type RdfConst = Arc<str>;
 type NullGenerator = usize;
+type MapKey = Arc<str>;
+type TermTag = Arc<str>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeDescriptor {
@@ -35,21 +45,166 @@ struct TypeDescriptor {
     null_gens: Vec<NullGenerator>,
 }
 
+#[repr(C, align(8))]
+struct BitPartition {
+    ext_types: u16,
+    list_functors: u8,
+    map_functors: u8,
+    null_generators: u8,
+    rdf_constants: u8,
+    int_constants: u8,
+    str_constants: u8,
+}
+
+impl BitPartition {
+    fn zeroed() -> Self {
+        unsafe { std::mem::zeroed() }
+    }
+}
+
+trait Flag<T> {
+    fn set(self, which: T) -> Self;
+}
+
+impl Flag<ExtType> for BitPartition {
+    fn set(mut self, which: ExtType) -> Self {
+        self.ext_types |= 1 << which.discriminant();
+        self
+    }
+}
+
+impl From<BitPartition> for Bitmap {
+    fn from(value: BitPartition) -> Self {
+        Bitmap::from(unsafe { std::mem::transmute::<_, u64>(value) })
+    }
+}
+
+macro_rules! impl_const_idx_flag {
+    ($ty_name:ident, $fld_name:ident) => {
+        struct $ty_name(u8);
+
+        impl Flag<$ty_name> for BitPartition {
+            fn set(mut self, which: $ty_name) -> Self {
+                self.$fld_name |= 1 << which.0;
+                self
+            }
+        }
+    };
+
+    ($ty_name:ident, $fld_name:ident, other) => {
+        struct $ty_name(u8);
+
+        impl $ty_name {
+            fn other() -> Self {
+                return Self(1 << 7);
+            }
+        }
+
+        impl Flag<$ty_name> for BitPartition {
+            fn set(mut self, which: $ty_name) -> Self {
+                self.$fld_name |= 1 << which.0;
+                self
+            }
+        }
+    };
+}
+
+impl_const_idx_flag!(StrConstIdx, str_constants);
+impl_const_idx_flag!(IntConstIdx, int_constants);
+impl_const_idx_flag!(RdfConstIdx, rdf_constants);
+impl_const_idx_flag!(NullIdx, null_generators, other);
+impl_const_idx_flag!(ListTagIdx, list_functors, other);
+impl_const_idx_flag!(MapTagIdx, map_functors, other);
+
+trait FindIndex<T> {
+    fn find_index(self, constant: &T) -> Option<usize>;
+}
+
+impl<T: Eq, I: Iterator<Item = T>> FindIndex<T> for I {
+    fn find_index(self, constant: &T) -> Option<usize> {
+        self.enumerate()
+            .find_map(|(i, c)| (&c == constant).then_some(i))
+    }
+}
+
+impl TypeDescriptor {
+    fn abstraction(&self, f: &NemoFunctor) -> Bitmap {
+        let partition = match f {
+            NemoFunctor::Double => BitPartition::zeroed().set(ExtType::Double),
+            NemoFunctor::StrConst(str_constant) => {
+                match self.str_constants.iter().find_index(&str_constant) {
+                    Some(i) => BitPartition::zeroed().set(StrConstIdx(i as u8)),
+                    None => BitPartition::zeroed().set(ExtType::String),
+                }
+            }
+            NemoFunctor::IntConst(int_const) => {
+                match self.int_constants.iter().find_index(&int_const) {
+                    Some(i) => BitPartition::zeroed().set(IntConstIdx(i as u8)),
+                    None => match *int_const {
+                        0 => BitPartition::zeroed().set(ExtType::Zero),
+                        c if c > 0 => BitPartition::zeroed().set(ExtType::Pos),
+                        _ => BitPartition::zeroed().set(ExtType::Neg),
+                    },
+                }
+            }
+            NemoFunctor::RdfConst(rdf_const) => {
+                match self.rdf_constants.iter().find_index(&rdf_const) {
+                    Some(i) => BitPartition::zeroed().set(RdfConstIdx(i as u8)),
+                    None => BitPartition::zeroed().set(ExtType::OtherRdf),
+                }
+            }
+            NemoFunctor::Null(gen) => match self.null_gens.iter().find_index(&gen) {
+                Some(i) => BitPartition::zeroed().set(NullIdx(i as u8)),
+                None => BitPartition::zeroed().set(NullIdx::other()),
+            },
+            NemoFunctor::Map {
+                tag: Some(tag),
+                keys,
+            } => todo!(),
+            NemoFunctor::Map { tag: None, keys } => todo!(),
+            NemoFunctor::List {
+                tag: Some(tag),
+                length,
+            } => {
+                match self.list_shapes.iter().find_index(&&ListTagType {
+                    tag: tag.clone(),
+                    length: *length as u8,
+                }) {
+                    Some(_) => todo!(),
+                    None => todo!(),
+                }
+            }
+            NemoFunctor::List { tag: None, length } => match *length {
+                0 => todo!(),
+                2 => todo!(),
+                3 => todo!(),
+                _ => todo!(),
+            },
+        };
+
+        Bitmap::from(partition)
+    }
+
+    fn abstract_input(&self) -> Bitmap {
+        todo!()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ListTagType {
-    tag: Arc<str>,
-    arity: u8,
+    tag: TermTag,
+    length: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct MapTagType {
-    tag: Arc<str>,
-    keys: Arc<[Arc<str>]>,
+    tag: Option<TermTag>,
+    keys: Arc<[MapKey]>,
 }
 
 struct BitSubstitution {
     descriptor: Arc<TypeDescriptor>,
-    variables: Vec<crate::bitmap::Bitmap>,
+    variables: Vec<Bitmap>,
 }
 
 impl PreOrder for BitSubstitution {
@@ -67,47 +222,90 @@ impl PreOrder for BitSubstitution {
     }
 }
 
-impl JoinSemiLattice for BitSubstitution {
-    fn bot() -> Self {
-        todo!()
-    }
-
+impl Join for BitSubstitution {
     fn join(&self, other: &Self) -> Self {
         todo!()
     }
 }
 
-enum NemoFunctor {
-    StrConst(StrConst),
-    IntConst(IntConst),
-}
-
-impl AbstractSubstitution<NemoFunctor> for BitSubstitution {
-    fn apply_eq(&mut self, lhs: super::Variable, rhs: super::Variable) {
+impl<T: AsRef<Self>> LocalMinimum<T> for BitSubstitution {
+    fn local_minimum(t: &T) -> Self {
         todo!()
     }
+}
 
-    fn apply_func(&mut self, lhs: super::Variable, func: &F, rhs: &[super::Variable]) {
-        todo!()
+enum NemoFunctor {
+    Double,
+    StrConst(StrConst),
+    IntConst(IntConst),
+    RdfConst(RdfConst),
+    Null(NullGenerator),
+    Map {
+        tag: Option<TermTag>,
+        keys: Arc<[MapKey]>,
+    },
+    List {
+        tag: Option<TermTag>,
+        length: usize,
+    },
+}
+
+impl<P> AbstractSubstitution<NemoFunctor, P> for BitSubstitution {
+    fn apply_eq(&mut self, lhs: super::Variable, rhs: super::Variable) {
+        assert!((lhs as usize) < self.variables.len());
+        assert!((rhs as usize) < self.variables.len());
+
+        if lhs == rhs {
+            return;
+        }
+
+        let lhs = &mut unsafe { *self.variables.as_mut_ptr().add(rhs as usize) };
+        let rhs = &mut unsafe { *self.variables.as_mut_ptr().add(rhs as usize) };
+
+        lhs.meet_with(rhs);
+        *rhs = *lhs;
+    }
+
+    fn apply_func(&mut self, lhs: super::Variable, func: &NemoFunctor, _rhs: &[super::Variable]) {
+        self.variables[lhs as usize].meet_with(&self.descriptor.abstraction(func))
     }
 
     fn extended(&self, num_vars: u16) -> Self {
-        todo!()
+        assert!((num_vars as usize) >= self.variables.len());
+
+        let mut variables = Vec::with_capacity(num_vars as usize);
+        variables.extend_from_slice(&self.variables);
+        variables.resize_with(num_vars as usize, Bitmap::zeroed);
+
+        Self {
+            descriptor: self.descriptor.clone(),
+            variables,
+        }
     }
 
     fn restrict(&mut self, num_vars: u16) {
-        todo!()
+        assert!((num_vars as usize) <= self.variables.len());
+
+        self.variables
+            .resize_with(num_vars as usize, || unreachable!())
     }
 
-    fn project(&self, vars: &[super::Variable]) -> Self {
-        todo!()
+    fn project(&self, vars: impl Iterator<Item = super::Variable>) -> Self {
+        let variables = vars.map(|v| self.variables[v as usize]).collect();
+
+        Self {
+            variables,
+            descriptor: self.descriptor.clone(),
+        }
     }
 
-    fn propagate(&mut self, vars: &[super::Variable], update: Self) {
-        todo!()
+    fn propagate(&mut self, vars: impl Iterator<Item = super::Variable>, update: Self) {
+        for (index, var) in vars.enumerate() {
+            self.variables[var as usize].meet_with(&update.variables[index]);
+        }
     }
 
     fn len(&self) -> u16 {
-        todo!()
+        self.variables.len() as u16
     }
 }

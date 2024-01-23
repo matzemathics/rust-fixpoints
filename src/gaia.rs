@@ -5,7 +5,7 @@ use std::hash::Hash;
 use crate::fixpoint::MonotoneTransform;
 use crate::lattice::{LubIterator, PreOrder};
 
-use self::abstract_substitution::AbstractSubstitution;
+use self::abstract_substitution::{AbstractSubstitution, Query};
 
 mod abstract_substitution;
 mod bit_substitution;
@@ -23,17 +23,17 @@ impl<C: Clause> NormalizedClause<C> {
     fn execute<S>(&self, mut f: impl FnMut(Query<C::PredicateSymbol, S>) -> S, input: &S) -> S
     where
         C::PredicateSymbol: Clone,
-        S: AbstractSubstitution<C::FunctionSymbol>,
+        S: AbstractSubstitution<C::FunctionSymbol, C::PredicateSymbol>,
     {
         let mut subst = input.extended(self.num_variables);
 
         for (pred, vars) in &self.body_atoms {
-            let local_subst = subst.project(vars);
+            let local_subst = subst.project(vars.iter().cloned());
             let query = Query {
                 predicate: pred.clone(),
                 subst: local_subst,
             };
-            subst.propagate(&vars, f(query));
+            subst.propagate(vars.iter().cloned(), f(query));
         }
 
         for &(lhs, rhs) in &self.variable_equalities {
@@ -73,26 +73,10 @@ impl<C: Clause> Gaia<C> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Query<PredicateSymbol, S> {
-    pub subst: S,
-    pub predicate: PredicateSymbol,
-}
-
-impl<AD: PreOrder, PredicateSymbol: Eq> PreOrder for Query<PredicateSymbol, AD> {
-    fn leq(&self, other: &Self) -> bool {
-        if self.predicate != other.predicate {
-            return false;
-        }
-
-        self.subst.leq(&other.subst)
-    }
-}
-
 impl<C, S> MonotoneTransform<Query<C::PredicateSymbol, S>> for Gaia<C>
 where
     C: Clause,
-    S: AbstractSubstitution<C::FunctionSymbol>,
+    S: AbstractSubstitution<C::FunctionSymbol, C::PredicateSymbol>,
 {
     type Output = S;
 
@@ -100,11 +84,12 @@ where
     where
         F: FnMut(Query<C::PredicateSymbol, S>) -> Self::Output,
     {
+        let min = S::local_minimum(&query);
         self.program
             .get(&(query.predicate, query.subst.len()))
             .into_iter()
             .flatten()
             .map(|c| c.execute(&mut f, &query.subst))
-            .lub()
+            .lub(min)
     }
 }
