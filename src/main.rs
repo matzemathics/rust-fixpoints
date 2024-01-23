@@ -4,6 +4,7 @@ use crate::fixpoint::compute_fixpoint;
 // use crate::gaia::{default_substitution, Clause, Gaia, Query};
 
 pub(crate) mod bitmap;
+pub(crate) mod fixed_vec;
 mod fixpoint;
 mod gaia;
 mod lattice;

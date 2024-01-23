@@ -2,6 +2,7 @@ use core::num;
 use std::sync::Arc;
 
 use crate::bitmap::Bitmap;
+use crate::fixed_vec::FixedVec;
 use crate::lattice::{Join, LocalMinimum, PreOrder};
 
 use super::abstract_substitution::AbstractSubstitution;
@@ -37,12 +38,12 @@ type TermTag = Arc<str>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeDescriptor {
-    int_constants: [IntConst; 8],
-    str_constants: [StrConst; 8],
-    rdf_constants: [RdfConst; 8],
-    list_shapes: Vec<ListTagType>,
-    map_shapes: Vec<MapTagType>,
-    null_gens: Vec<NullGenerator>,
+    int_constants: FixedVec<IntConst, 8>,
+    str_constants: FixedVec<StrConst, 8>,
+    rdf_constants: FixedVec<RdfConst, 8>,
+    list_shapes: FixedVec<ListTagType, 7>,
+    map_shapes: FixedVec<MapTagType, 7>,
+    null_gens: FixedVec<NullGenerator, 7>,
 }
 
 #[repr(C, align(8))]
@@ -157,11 +158,15 @@ impl TypeDescriptor {
                 Some(i) => BitPartition::zeroed().set(NullIdx(i as u8)),
                 None => BitPartition::zeroed().set(NullIdx::other()),
             },
-            NemoFunctor::Map {
-                tag: Some(tag),
-                keys,
-            } => todo!(),
-            NemoFunctor::Map { tag: None, keys } => todo!(),
+            NemoFunctor::Map { tag, keys } => {
+                match self.map_shapes.iter().find_index(&&MapTagType {
+                    tag: tag.clone(),
+                    keys: keys.clone(),
+                }) {
+                    Some(i) => BitPartition::zeroed().set(MapTagIdx(i as u8)),
+                    None => BitPartition::zeroed().set(MapTagIdx::other()),
+                }
+            }
             NemoFunctor::List {
                 tag: Some(tag),
                 length,
@@ -170,15 +175,15 @@ impl TypeDescriptor {
                     tag: tag.clone(),
                     length: *length as u8,
                 }) {
-                    Some(_) => todo!(),
-                    None => todo!(),
+                    Some(i) => BitPartition::zeroed().set(ListTagIdx(i as u8)),
+                    None => BitPartition::zeroed().set(ListTagIdx::other()),
                 }
             }
             NemoFunctor::List { tag: None, length } => match *length {
-                0 => todo!(),
-                2 => todo!(),
-                3 => todo!(),
-                _ => todo!(),
+                0 => BitPartition::zeroed().set(ExtType::Zero),
+                2 => BitPartition::zeroed().set(ExtType::Pair),
+                3 => BitPartition::zeroed().set(ExtType::Triple),
+                _ => BitPartition::zeroed().set(ExtType::OtherList),
             },
         };
 
