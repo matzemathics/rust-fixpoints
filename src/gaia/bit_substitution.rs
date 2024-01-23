@@ -1,4 +1,3 @@
-use core::num;
 use std::sync::Arc;
 
 use crate::bitmap::Bitmap;
@@ -6,6 +5,7 @@ use crate::fixed_vec::FixedVec;
 use crate::lattice::{Join, LocalMinimum, PreOrder};
 
 use super::abstract_substitution::AbstractSubstitution;
+use super::{IntConst, MapKey, NemoFunctor, NullGenerator, RdfConst, StrConst, TermTag};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,13 +30,6 @@ impl ExtType {
         unsafe { *<*const _>::from(&self).cast() }
     }
 }
-
-type IntConst = i64;
-type StrConst = Arc<str>;
-type RdfConst = Arc<str>;
-type NullGenerator = usize;
-type MapKey = Arc<str>;
-type TermTag = Arc<str>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct TypeDescriptor {
@@ -240,22 +233,6 @@ impl<T: AsRef<Self>> LocalMinimum<T> for BitSubstitution {
             variables,
         }
     }
-}
-
-enum NemoFunctor {
-    Double,
-    StrConst(StrConst),
-    IntConst(IntConst),
-    RdfConst(RdfConst),
-    Null(NullGenerator),
-    Map {
-        tag: Option<TermTag>,
-        keys: Arc<[MapKey]>,
-    },
-    List {
-        tag: Option<TermTag>,
-        length: usize,
-    },
 }
 
 impl<P> AbstractSubstitution<NemoFunctor, P> for BitSubstitution {
