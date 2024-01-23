@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::bitmap::Bitmap;
@@ -29,6 +30,25 @@ impl ExtType {
     fn discriminant(&self) -> u8 {
         unsafe { *<*const _>::from(&self).cast() }
     }
+
+    fn from_discriminant(d: u8) -> Self {
+        match d {
+            0 => ExtType::Empty,
+            1 => ExtType::Pair,
+            2 => ExtType::Triple,
+            3 => ExtType::OtherList,
+            4 => ExtType::TaggedList,
+            5 => ExtType::Map,
+            6 => ExtType::Null,
+            7 => ExtType::Double,
+            8 => ExtType::String,
+            9 => ExtType::OtherRdf,
+            10 => ExtType::Zero,
+            11 => ExtType::Pos,
+            12 => ExtType::Neg,
+            _ => panic!("no such discriminant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -50,6 +70,50 @@ struct BitPartition {
     rdf_constants: u8,
     int_constants: u8,
     str_constants: u8,
+}
+
+#[derive(Debug)]
+struct IndexVec(Vec<usize>);
+
+macro_rules! impl_index_vec_from {
+    ($ty:tt) => {
+        impl From<$ty> for IndexVec {
+            fn from(input: $ty) -> Self {
+                let mut res = Vec::new();
+
+                for i in 0..std::mem::size_of::<$ty>() {
+                    if (input & (1 << i)) != 0 {
+                        res.push(i)
+                    }
+                }
+
+                IndexVec(res)
+            }
+        }
+    };
+}
+
+impl_index_vec_from!(u8);
+impl_index_vec_from!(u16);
+
+impl Debug for BitPartition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ext_types = IndexVec::from(self.ext_types)
+            .0
+            .into_iter()
+            .map(|i| ExtType::from_discriminant(i as u8))
+            .collect::<Vec<_>>();
+
+        f.debug_struct("BitPartition")
+            .field("ext_types", &ext_types)
+            .field("list_functors", &IndexVec::from(self.list_functors))
+            .field("map_functors", &IndexVec::from(self.map_functors))
+            .field("null_generators", &IndexVec::from(self.null_generators))
+            .field("rdf_constants", &IndexVec::from(self.rdf_constants))
+            .field("int_constants", &IndexVec::from(self.int_constants))
+            .field("str_constants", &IndexVec::from(self.str_constants))
+            .finish()
+    }
 }
 
 impl BitPartition {

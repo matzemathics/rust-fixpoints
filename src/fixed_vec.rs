@@ -1,9 +1,9 @@
 use std::{
+    fmt::Debug,
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
 };
 
-#[derive(Debug)]
 pub struct FixedVec<T, const N: usize> {
     length: usize,
     elems: [MaybeUninit<T>; N],
@@ -67,5 +67,11 @@ impl<T: Eq, const N: usize> Eq for FixedVec<T, N> {}
 impl<T, const N: usize> Default for FixedVec<T, N> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T: Debug, const N: usize> Debug for FixedVec<T, N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
     }
 }
