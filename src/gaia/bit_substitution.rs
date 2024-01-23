@@ -10,17 +10,19 @@ use super::abstract_substitution::AbstractSubstitution;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExtType {
-    Empty = 0,     // term `()`,
-    Pair = 1,      // terms with form `(x, y)`
-    Triple = 2,    // terms with form `(x, y, z)`
-    OtherList = 3, // terms with form `(x_n, ...)` and none of the above
-    Map = 4,       // terms with form `{k_n = x_n, ...}`
-    Double = 5,    // terms of type double
-    String = 6,    // terms of type string
-    OtherRdf = 7,  // other rdf terms
-    Zero = 8,      // term `0`
-    Pos = 9,       // term of type int > 0
-    Neg = 10,      // term of type int < 0
+    Empty = 0,      // term `()`,
+    Pair = 1,       // terms of form `(x, y)`
+    Triple = 2,     // terms of form `(x, y, z)`
+    OtherList = 3,  // terms of form `(x_i, ...)` and none of the above
+    TaggedList = 4, // terms of form `F(x_i, ...)`
+    Map = 5,        // terms of form `{k_i = x_i, ...}` or `F{k_i = x_i, ...}`
+    Null = 6,       // named nulls
+    Double = 7,     // terms of type double
+    String = 8,     // terms of type string
+    OtherRdf = 9,   // other rdf terms
+    Zero = 10,      // term `0`
+    Pos = 11,       // term of type int > 0
+    Neg = 12,       // term of type int < 0
 }
 
 impl ExtType {
@@ -36,14 +38,14 @@ type NullGenerator = usize;
 type MapKey = Arc<str>;
 type TermTag = Arc<str>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct TypeDescriptor {
     int_constants: FixedVec<IntConst, 8>,
     str_constants: FixedVec<StrConst, 8>,
     rdf_constants: FixedVec<RdfConst, 8>,
-    list_shapes: FixedVec<ListTagType, 7>,
-    map_shapes: FixedVec<MapTagType, 7>,
-    null_gens: FixedVec<NullGenerator, 7>,
+    list_shapes: FixedVec<ListTagType, 8>,
+    map_shapes: FixedVec<MapTagType, 8>,
+    null_gens: FixedVec<NullGenerator, 8>,
 }
 
 #[repr(C, align(8))]
@@ -91,31 +93,14 @@ macro_rules! impl_const_idx_flag {
             }
         }
     };
-
-    ($ty_name:ident, $fld_name:ident, other) => {
-        struct $ty_name(u8);
-
-        impl $ty_name {
-            fn other() -> Self {
-                return Self(1 << 7);
-            }
-        }
-
-        impl Flag<$ty_name> for BitPartition {
-            fn set(mut self, which: $ty_name) -> Self {
-                self.$fld_name |= 1 << which.0;
-                self
-            }
-        }
-    };
 }
 
 impl_const_idx_flag!(StrConstIdx, str_constants);
 impl_const_idx_flag!(IntConstIdx, int_constants);
 impl_const_idx_flag!(RdfConstIdx, rdf_constants);
-impl_const_idx_flag!(NullIdx, null_generators, other);
-impl_const_idx_flag!(ListTagIdx, list_functors, other);
-impl_const_idx_flag!(MapTagIdx, map_functors, other);
+impl_const_idx_flag!(NullIdx, null_generators);
+impl_const_idx_flag!(ListTagIdx, list_functors);
+impl_const_idx_flag!(MapTagIdx, map_functors);
 
 trait FindIndex<T> {
     fn find_index(self, constant: &T) -> Option<usize>;
@@ -156,7 +141,7 @@ impl TypeDescriptor {
             }
             NemoFunctor::Null(gen) => match self.null_gens.iter().find_index(&gen) {
                 Some(i) => BitPartition::zeroed().set(NullIdx(i as u8)),
-                None => BitPartition::zeroed().set(NullIdx::other()),
+                None => BitPartition::zeroed().set(ExtType::Null),
             },
             NemoFunctor::Map { tag, keys } => {
                 match self.map_shapes.iter().find_index(&&MapTagType {
@@ -164,7 +149,7 @@ impl TypeDescriptor {
                     keys: keys.clone(),
                 }) {
                     Some(i) => BitPartition::zeroed().set(MapTagIdx(i as u8)),
-                    None => BitPartition::zeroed().set(MapTagIdx::other()),
+                    None => BitPartition::zeroed().set(ExtType::Map),
                 }
             }
             NemoFunctor::List {
@@ -176,11 +161,11 @@ impl TypeDescriptor {
                     length: *length as u8,
                 }) {
                     Some(i) => BitPartition::zeroed().set(ListTagIdx(i as u8)),
-                    None => BitPartition::zeroed().set(ListTagIdx::other()),
+                    None => BitPartition::zeroed().set(ExtType::TaggedList),
                 }
             }
             NemoFunctor::List { tag: None, length } => match *length {
-                0 => BitPartition::zeroed().set(ExtType::Zero),
+                0 => BitPartition::zeroed().set(ExtType::Empty),
                 2 => BitPartition::zeroed().set(ExtType::Pair),
                 3 => BitPartition::zeroed().set(ExtType::Triple),
                 _ => BitPartition::zeroed().set(ExtType::OtherList),
@@ -188,10 +173,6 @@ impl TypeDescriptor {
         };
 
         Bitmap::from(partition)
-    }
-
-    fn abstract_input(&self) -> Bitmap {
-        todo!()
     }
 }
 
@@ -229,13 +210,35 @@ impl PreOrder for BitSubstitution {
 
 impl Join for BitSubstitution {
     fn join(&self, other: &Self) -> Self {
-        todo!()
+        assert_eq!(self.variables.len(), other.variables.len());
+        assert_eq!(self.descriptor, other.descriptor);
+
+        let variables = self
+            .variables
+            .iter()
+            .zip(&other.variables)
+            .map(|(l, r)| l.join(r))
+            .collect();
+
+        let descriptor = self.descriptor.clone();
+
+        Self {
+            descriptor,
+            variables,
+        }
     }
 }
 
 impl<T: AsRef<Self>> LocalMinimum<T> for BitSubstitution {
     fn local_minimum(t: &T) -> Self {
-        todo!()
+        let descriptor = t.as_ref().descriptor.clone();
+        let mut variables = Vec::with_capacity(t.as_ref().variables.len());
+        variables.resize_with(t.as_ref().variables.len(), Bitmap::zeroed);
+
+        Self {
+            descriptor,
+            variables,
+        }
     }
 }
 
