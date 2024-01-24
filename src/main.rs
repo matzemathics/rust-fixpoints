@@ -9,7 +9,9 @@ mod fixpoint;
 mod gaia;
 mod lattice;
 
-fn main() {}
+fn main() {
+    gaia::test::test_main();
+}
 
 /*
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]

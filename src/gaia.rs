@@ -103,12 +103,22 @@ where
     }
 }
 
-mod test {
+pub mod test {
     use std::{collections::HashMap, sync::Arc};
 
-    use crate::gaia::{abstract_substitution::Query, Gaia, NormalizedClause};
+    use crate::{
+        fixpoint::{compute_fixpoint, MonotoneTransform},
+        gaia::{
+            abstract_substitution::{AbstractSubstitution, Query},
+            bit_substitution::BitSubstitution,
+            Gaia, NormalizedClause,
+        },
+    };
 
-    #[test]
+    pub fn test_main() {
+        reach_with_backtrack()
+    }
+
     fn reach_with_backtrack() {
         use super::NemoFunctor;
         let edge_3 = ("edge", 3);
@@ -154,8 +164,11 @@ mod test {
         let g = Gaia { program };
 
         let query = Query {
-            subst: todo!(),
-            predicate: edge_3,
+            subst: BitSubstitution::any(3, Default::default()),
+            predicate: "edge",
         };
+
+        let (pt, _) = compute_fixpoint(query, g);
+        println!("{pt:#?}");
     }
 }

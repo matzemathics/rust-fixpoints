@@ -1,4 +1,7 @@
+use core::num;
+use std::env::var;
 use std::fmt::Debug;
+use std::iter::repeat_with;
 use std::sync::Arc;
 
 use crate::bitmap::Bitmap;
@@ -28,31 +31,31 @@ enum ExtType {
 
 impl ExtType {
     fn discriminant(&self) -> u8 {
-        unsafe { *<*const _>::from(&self).cast() }
+        unsafe { *<*const _>::from(self).cast() }
     }
 
-    fn from_discriminant(d: u8) -> Self {
+    fn try_from_discriminant(d: u8) -> Result<Self, ()> {
         match d {
-            0 => ExtType::Empty,
-            1 => ExtType::Pair,
-            2 => ExtType::Triple,
-            3 => ExtType::OtherList,
-            4 => ExtType::TaggedList,
-            5 => ExtType::Map,
-            6 => ExtType::Null,
-            7 => ExtType::Double,
-            8 => ExtType::String,
-            9 => ExtType::OtherRdf,
-            10 => ExtType::Zero,
-            11 => ExtType::Pos,
-            12 => ExtType::Neg,
-            _ => panic!("no such discriminant"),
+            0 => Ok(ExtType::Empty),
+            1 => Ok(ExtType::Pair),
+            2 => Ok(ExtType::Triple),
+            3 => Ok(ExtType::OtherList),
+            4 => Ok(ExtType::TaggedList),
+            5 => Ok(ExtType::Map),
+            6 => Ok(ExtType::Null),
+            7 => Ok(ExtType::Double),
+            8 => Ok(ExtType::String),
+            9 => Ok(ExtType::OtherRdf),
+            10 => Ok(ExtType::Zero),
+            11 => Ok(ExtType::Pos),
+            12 => Ok(ExtType::Neg),
+            _ => Err(()),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct TypeDescriptor {
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
+pub struct TypeDescriptor {
     int_constants: FixedVec<IntConst, 8>,
     str_constants: FixedVec<StrConst, 8>,
     rdf_constants: FixedVec<RdfConst, 8>,
@@ -72,6 +75,10 @@ struct BitPartition {
     str_constants: u8,
 }
 
+fn any() -> Bitmap {
+    Bitmap::from(0xff_ff_ff_ff_ff_ff_ff_ff)
+}
+
 #[derive(Debug)]
 struct IndexVec(Vec<usize>);
 
@@ -81,8 +88,8 @@ macro_rules! impl_index_vec_from {
             fn from(input: $ty) -> Self {
                 let mut res = Vec::new();
 
-                for i in 0..std::mem::size_of::<$ty>() {
-                    if (input & (1 << i)) != 0 {
+                for i in 0..std::mem::size_of::<$ty>() * 8 {
+                    if (input as usize & (1 << i)) != 0 {
                         res.push(i)
                     }
                 }
@@ -101,7 +108,7 @@ impl Debug for BitPartition {
         let ext_types = IndexVec::from(self.ext_types)
             .0
             .into_iter()
-            .map(|i| ExtType::from_discriminant(i as u8))
+            .filter_map(|i| ExtType::try_from_discriminant(i as u8).ok())
             .collect::<Vec<_>>();
 
         f.debug_struct("BitPartition")
@@ -128,7 +135,7 @@ trait Flag<T> {
 
 impl Flag<ExtType> for BitPartition {
     fn set(mut self, which: ExtType) -> Self {
-        self.ext_types |= 1 << which.discriminant();
+        self.ext_types |= 1u16 << (which.discriminant() as u16);
         self
     }
 }
@@ -136,6 +143,12 @@ impl Flag<ExtType> for BitPartition {
 impl From<BitPartition> for Bitmap {
     fn from(value: BitPartition) -> Self {
         Bitmap::from(unsafe { std::mem::transmute::<_, u64>(value) })
+    }
+}
+
+impl From<Bitmap> for BitPartition {
+    fn from(value: Bitmap) -> Self {
+        unsafe { std::mem::transmute::<u64, BitPartition>(u64::from(value)) }
     }
 }
 
@@ -245,7 +258,8 @@ struct MapTagType {
     keys: Arc<[MapKey]>,
 }
 
-struct BitSubstitution {
+#[derive(PartialEq, Eq, Clone, Hash)]
+pub struct BitSubstitution {
     descriptor: Arc<TypeDescriptor>,
     variables: Vec<Bitmap>,
 }
@@ -324,7 +338,7 @@ impl<P> AbstractSubstitution<NemoFunctor, P> for BitSubstitution {
 
         let mut variables = Vec::with_capacity(num_vars as usize);
         variables.extend_from_slice(&self.variables);
-        variables.resize_with(num_vars as usize, Bitmap::zeroed);
+        variables.resize_with(num_vars as usize, any);
 
         Self {
             descriptor: self.descriptor.clone(),
@@ -356,5 +370,30 @@ impl<P> AbstractSubstitution<NemoFunctor, P> for BitSubstitution {
 
     fn len(&self) -> u16 {
         self.variables.len() as u16
+    }
+}
+
+impl Debug for BitSubstitution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let vars: Vec<_> = self
+            .variables
+            .iter()
+            .map(|v| BitPartition::from(*v))
+            .collect();
+
+        f.debug_struct("BitSubstitution")
+            // .field("descriptor", &self.descriptor)
+            .field("variables", &vars)
+            .finish()
+    }
+}
+
+impl BitSubstitution {
+    pub fn any(num_variables: u16, descriptor: Arc<TypeDescriptor>) -> Self {
+        let variables = repeat_with(any).take(num_variables as usize).collect();
+        Self {
+            descriptor,
+            variables,
+        }
     }
 }

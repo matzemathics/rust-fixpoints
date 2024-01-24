@@ -1,5 +1,6 @@
 use std::{
     fmt::Debug,
+    hash::Hash,
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
 };
@@ -73,5 +74,12 @@ impl<T, const N: usize> Default for FixedVec<T, N> {
 impl<T: Debug, const N: usize> Debug for FixedVec<T, N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
+    }
+}
+
+impl<T: Hash, const N: usize> Hash for FixedVec<T, N> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let slice: &[_] = self;
+        slice.hash(state)
     }
 }

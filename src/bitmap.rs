@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use crate::lattice::{Join, JoinSemiLattice};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Bitmap(u64);
 
 impl Bitmap {
@@ -18,6 +18,12 @@ impl Bitmap {
 impl From<u64> for Bitmap {
     fn from(value: u64) -> Self {
         Self(value)
+    }
+}
+
+impl From<Bitmap> for u64 {
+    fn from(value: Bitmap) -> u64 {
+        value.0
     }
 }
 
