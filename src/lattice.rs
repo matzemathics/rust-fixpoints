@@ -4,13 +4,21 @@ pub trait PreOrder {
     fn leq(&self, other: &Self) -> bool;
 }
 
-pub trait Join: Sized + PreOrder {
+pub trait Join: PreOrder {
     fn join(&self, other: &Self) -> Self;
 }
 
-pub trait JoinSemiLattice: Join {
-    fn bot() -> Self;
+pub trait Meet: PreOrder {
+    fn meet_with(&mut self, other: &Self);
+}
 
+pub trait Bottom: PreOrder + Sized {
+    fn is_bottom(&self) -> bool;
+
+    fn bot() -> Self;
+}
+
+pub trait JoinSemiLattice: Sized + Join + Bottom {
     fn join_opt(lhs: Option<&Self>, rhs: Option<&Self>) -> Self {
         match (lhs, rhs) {
             (None, None) => Self::bot(),
@@ -20,6 +28,8 @@ pub trait JoinSemiLattice: Join {
         }
     }
 }
+
+impl<T: Join + Bottom> JoinSemiLattice for T {}
 
 pub trait LocalMinimum<K> {
     fn local_minimum(key: &K) -> Self;
@@ -70,9 +80,13 @@ impl Join for u64 {
     }
 }
 
-impl JoinSemiLattice for u64 {
+impl Bottom for u64 {
     fn bot() -> Self {
         0
+    }
+
+    fn is_bottom(&self) -> bool {
+        self.eq(&0)
     }
 }
 
@@ -82,9 +96,13 @@ impl Join for u128 {
     }
 }
 
-impl JoinSemiLattice for u128 {
+impl Bottom for u128 {
     fn bot() -> Self {
         0
+    }
+
+    fn is_bottom(&self) -> bool {
+        *self == 0
     }
 }
 

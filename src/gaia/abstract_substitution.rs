@@ -24,7 +24,7 @@ impl<P, S> AsRef<S> for Query<P, S> {
     }
 }
 
-pub trait AbstractSubstitution<F, P>: Join + LocalMinimum<Query<P, Self>> {
+pub trait AbstractSubstitution<F, P>: Join + LocalMinimum<Query<P, Self>> + Sized {
     fn apply_eq(&mut self, lhs: Variable, rhs: Variable);
     fn apply_func(&mut self, lhs: Variable, func: &F, rhs: &[Variable]);
 

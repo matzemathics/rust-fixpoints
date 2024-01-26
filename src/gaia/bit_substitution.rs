@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::bitmap::Bitmap;
 use crate::fixed_vec::FixedVec;
-use crate::lattice::{Join, LocalMinimum, PreOrder};
+use crate::lattice::{Join, JoinSemiLattice, LocalMinimum, PreOrder};
 
 use super::abstract_substitution::AbstractSubstitution;
 use super::{IntConst, MapKey, NemoFunctor, NullGenerator, RdfConst, StrConst, TermTag};
@@ -56,12 +56,12 @@ impl ExtType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct TypeDescriptor {
-    int_constants: FixedVec<IntConst, 8>,
-    str_constants: FixedVec<StrConst, 8>,
-    rdf_constants: FixedVec<RdfConst, 8>,
-    list_shapes: FixedVec<ListTagType, 8>,
-    map_shapes: FixedVec<MapTagType, 8>,
-    null_gens: FixedVec<NullGenerator, 8>,
+    pub(crate) int_constants: FixedVec<IntConst, 8>,
+    pub(crate) str_constants: FixedVec<StrConst, 8>,
+    pub(crate) rdf_constants: FixedVec<RdfConst, 8>,
+    pub(crate) list_shapes: FixedVec<ListTagType, 8>,
+    pub(crate) map_shapes: FixedVec<MapTagType, 8>,
+    pub(crate) null_gens: FixedVec<NullGenerator, 8>,
 }
 
 #[repr(C, align(8))]
@@ -247,13 +247,13 @@ impl TypeDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ListTagType {
+pub struct ListTagType {
     tag: TermTag,
     length: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct MapTagType {
+pub struct MapTagType {
     tag: Option<TermTag>,
     keys: Arc<[MapKey]>,
 }
@@ -322,15 +322,31 @@ impl<P> AbstractSubstitution<NemoFunctor, P> for BitSubstitution {
             return;
         }
 
-        let lhs = &mut unsafe { *self.variables.as_mut_ptr().add(rhs as usize) };
-        let rhs = &mut unsafe { *self.variables.as_mut_ptr().add(rhs as usize) };
+        {
+            // SAFETY: lhs and rhs don't overlap (checked above)
+            // and are valid indices
+            let lhs = &mut unsafe { *self.variables.as_mut_ptr().add(rhs as usize) };
+            let rhs = &mut unsafe { *self.variables.as_mut_ptr().add(rhs as usize) };
 
-        lhs.meet_with(rhs);
-        *rhs = *lhs;
+            lhs.meet_with(rhs);
+            *rhs = *lhs;
+        }
+
+        if self.variables[lhs as usize].is_zeroed() {
+            for v in &mut self.variables {
+                *v = Bitmap::zeroed()
+            }
+        }
     }
 
     fn apply_func(&mut self, lhs: super::Variable, func: &NemoFunctor, _rhs: &[super::Variable]) {
-        self.variables[lhs as usize].meet_with(&self.descriptor.abstraction(func))
+        self.variables[lhs as usize].meet_with(&self.descriptor.abstraction(func));
+
+        if self.variables[lhs as usize].is_zeroed() {
+            for v in &mut self.variables {
+                *v = Bitmap::zeroed()
+            }
+        }
     }
 
     fn extended(&self, num_vars: u16) -> Self {

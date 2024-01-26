@@ -10,6 +10,7 @@ use self::abstract_substitution::{AbstractSubstitution, Query};
 
 mod abstract_substitution;
 mod bit_substitution;
+mod type_table;
 
 #[derive(Debug, Clone)]
 pub enum NemoFunctor {
@@ -51,6 +52,14 @@ impl<F, P> NormalizedClause<F, P> {
     {
         let mut subst = input.extended(self.num_variables);
 
+        for &(lhs, rhs) in &self.variable_equalities {
+            subst.apply_eq(lhs, rhs);
+        }
+
+        for (lhs, f, vars) in &self.ctor_equalities {
+            subst.apply_func(*lhs, f, vars);
+        }
+
         for (pred, vars) in &self.body_atoms {
             let local_subst = subst.project(vars.iter().cloned());
             let query = Query {
@@ -58,14 +67,6 @@ impl<F, P> NormalizedClause<F, P> {
                 subst: local_subst,
             };
             subst.propagate(vars.iter().cloned(), f(query));
-        }
-
-        for &(lhs, rhs) in &self.variable_equalities {
-            subst.apply_eq(lhs, rhs);
-        }
-
-        for (lhs, f, vars) in &self.ctor_equalities {
-            subst.apply_func(*lhs, f, vars);
         }
 
         subst.restrict(input.len());
@@ -110,7 +111,7 @@ pub mod test {
         fixpoint::{compute_fixpoint, MonotoneTransform},
         gaia::{
             abstract_substitution::{AbstractSubstitution, Query},
-            bit_substitution::BitSubstitution,
+            bit_substitution::{BitSubstitution, TypeDescriptor},
             Gaia, NormalizedClause,
         },
     };
@@ -121,7 +122,6 @@ pub mod test {
 
     fn reach_with_backtrack() {
         use super::NemoFunctor;
-        let edge_3 = ("edge", 3);
 
         fn nm_str(s: &str) -> NemoFunctor {
             NemoFunctor::StrConst(s.into())
@@ -146,26 +146,42 @@ pub mod test {
             });
         };
 
-        push_fact(edge_3, vec![nm_str("a"), nm_int(2), nm_str("b")]);
-        push_fact(edge_3, vec![nm_str("b"), nm_int(3), nm_str("c")]);
-        push_fact(edge_3, vec![nm_str("b"), nm_int(5), nm_str("d")]);
-        push_fact(edge_3, vec![nm_str("c"), nm_int(1), nm_str("d")]);
-        push_fact(edge_3, vec![nm_str("c"), nm_int(7), nm_str("e")]);
-        push_fact(edge_3, vec![nm_str("d"), nm_int(5), nm_str("f")]);
-        push_fact(edge_3, vec![nm_str("e"), nm_int(2), nm_str("f")]);
-        push_fact(edge_3, vec![nm_str("a"), nm_int(11), nm_str("f")]);
+        #[cfg(unused)]
+        {
+            let edge_3 = ("edge", 3);
+            push_fact(edge_3, vec![nm_str("a"), nm_int(2), nm_str("b")]);
+            push_fact(edge_3, vec![nm_str("b"), nm_int(3), nm_str("c")]);
+            push_fact(edge_3, vec![nm_str("b"), nm_int(5), nm_str("d")]);
+            push_fact(edge_3, vec![nm_str("c"), nm_int(1), nm_str("d")]);
+            push_fact(edge_3, vec![nm_str("c"), nm_int(7), nm_str("e")]);
+            push_fact(edge_3, vec![nm_str("d"), nm_int(5), nm_str("f")]);
+            push_fact(edge_3, vec![nm_str("e"), nm_int(2), nm_str("f")]);
+            push_fact(edge_3, vec![nm_str("a"), nm_int(11), nm_str("f")]);
 
-        let start = ("start", 1);
-        let end = ("end", 1);
+            let start = ("start", 1);
+            let end = ("end", 1);
 
-        push_fact(start, vec![nm_str("a")]);
-        push_fact(end, vec![nm_str("f")]);
+            push_fact(start, vec![nm_str("a")]);
+            push_fact(end, vec![nm_str("f")]);
+        }
+
+        push_fact(("p", 2), vec![nm_str("a"), nm_str("b")]);
+        push_fact(("p", 2), vec![nm_int(2), nm_int(3)]);
+
+        program.entry(("q", 2)).or_default().push(NormalizedClause {
+            body_atoms: vec![("p", vec![0, 1])],
+            variable_equalities: vec![],
+            ctor_equalities: vec![(0, nm_int(2), vec![])],
+            num_variables: 2,
+        });
 
         let g = Gaia { program };
 
+        let mut td = TypeDescriptor::default();
+        // td.str_constants.push("a".into());
         let query = Query {
-            subst: BitSubstitution::any(3, Default::default()),
-            predicate: "edge",
+            subst: BitSubstitution::any(2, Arc::new(td)),
+            predicate: "q",
         };
 
         let (pt, _) = compute_fixpoint(query, g);

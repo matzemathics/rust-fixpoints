@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use crate::lattice::{Join, JoinSemiLattice};
+use crate::lattice::{Bottom, Join, JoinSemiLattice};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Bitmap(u64);
@@ -8,6 +8,10 @@ pub struct Bitmap(u64);
 impl Bitmap {
     pub fn zeroed() -> Self {
         Bitmap(0)
+    }
+
+    pub fn is_zeroed(&self) -> bool {
+        self.0 == 0
     }
 
     pub fn meet_with(&mut self, other: &Self) {
@@ -47,8 +51,12 @@ impl Join for Bitmap {
     }
 }
 
-impl JoinSemiLattice for Bitmap {
+impl Bottom for Bitmap {
     fn bot() -> Self {
         Self::zeroed()
+    }
+
+    fn is_bottom(&self) -> bool {
+        self.is_zeroed()
     }
 }
