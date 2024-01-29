@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Add;
+use std::ops::Index;
 use std::ops::Mul;
 use std::ops::Sub;
 
@@ -23,32 +24,24 @@ impl<K, V> Default for PartialTable<K, V> {
 
 impl<K, V> PartialTable<K, V>
 where
-    K: PreOrder + Hash + Eq,
-    V: Join + Eq + LocalMinimum<K>,
+    K: Hash + Eq,
+    V: Eq + LocalMinimum<K>,
 {
     pub(crate) fn extend(&mut self, k: K) {
         debug_assert!(!self.0.contains_key(&k));
-
-        let value = self
-            .0
-            .iter()
-            .filter_map(|(a, b)| if a.leq(&k) { Some(b) } else { None })
-            .borrowed_lub(V::local_minimum(&k));
-
+        let value = V::local_minimum(&k);
         self.0.insert(k, value);
     }
 
-    pub(crate) fn adjust<'a>(&'a mut self, k: &'a K, v: &'a V) -> impl Iterator<Item = &K> + 'a {
-        self.0.iter_mut().filter_map(move |(a, b)| {
-            if k.leq(a) {
-                let updated = b.join(v);
-                if updated != *b {
-                    *b = updated;
-                    return Some(k);
-                }
-            }
-            None
-        })
+    pub(crate) fn adjust<'a>(&'a mut self, k: &'a K, v: V) -> bool {
+        debug_assert!(self.0.contains_key(k));
+        let entry = self.0.get_mut(k).unwrap();
+        if *entry == v {
+            true
+        } else {
+            *entry = v;
+            false
+        }
     }
 }
 
@@ -78,25 +71,12 @@ impl<T> Default for DependencyGraph<T> {
 }
 
 impl<T: Hash + Eq + Clone> DependencyGraph<T> {
-    pub(crate) fn remove<'a>(&mut self, deps: impl Iterator<Item = &'a T>)
-    where
-        T: 'a,
-    {
+    pub(crate) fn remove(&mut self, dep: &T) {
         // everything, which (transitively) depends on anything in `deps`
         // must be recomputed and thus be removed from the graph
 
-        let mut deleted = HashSet::new();
-        let deps = deps.collect::<HashSet<_>>();
-
-        // delete all nodes dependent on nodes in `deps`
-        self.0.retain(|k, v| {
-            if v.iter().any(|d| deps.contains(d)) {
-                deleted.insert(k.clone());
-                false
-            } else {
-                true
-            }
-        });
+        self.0.remove(dep);
+        let mut deleted = HashSet::from([dep.clone()]);
 
         // transitively delete anything dependent on anything deleted before
         loop {
@@ -159,7 +139,7 @@ impl<T, R> Default for FixComputation<T, R> {
 
 impl<T, R> FixComputation<T, R>
 where
-    T: PreOrder + Hash + Eq + Clone + Debug,
+    T: Hash + Eq + Clone + Debug,
     R: Join + Eq + Clone + LocalMinimum<T>,
 {
     pub(crate) fn repeat_computation(
@@ -180,8 +160,9 @@ where
         while !self.dependencies.dom_contains(alpha) {
             self.dependencies.extend(alpha.clone());
             let beta = tau.call(self.pretended_f(alpha, tau), alpha.clone());
-            let modified = self.partial_table.adjust(alpha, &beta);
-            self.dependencies.remove(modified);
+            if self.partial_table.adjust(alpha, beta) {
+                self.dependencies.remove(alpha);
+            }
         }
 
         let a2 = self.suspended.pop().expect("symmetrical to push");
