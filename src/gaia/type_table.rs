@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    borrow::Cow,
+    ops::{Deref, DerefMut},
+};
 
 use crate::lattice::{Bottom, Meet, PreOrder};
 
@@ -26,19 +29,31 @@ impl<T: PreOrder> PreOrder for Tup<T> {
 }
 
 impl<T: Meet + Bottom + Clone> Tup<T> {
-    fn unify(&self, other: &Self, indices: &[u16]) -> Option<Self> {
-        debug_assert_eq!(other.len(), indices.len());
-        let mut result = Box::from_iter(self.iter().cloned());
+    fn unify<F>(mut self, other: &Self, positions: &[Position<F>]) -> Option<Self>
+    where
+        T: Structural<F>,
+    {
+        debug_assert_eq!(other.len(), positions.len());
+        let mut stack: Vec<_> = positions
+            .iter()
+            .zip(other.0.iter().map(Cow::Borrowed))
+            .collect();
 
-        for (other_pos, &res_pos) in indices.iter().enumerate() {
-            result[res_pos as usize].meet_with(&other[other_pos]);
+        while let Some((pos, t)) = stack.pop() {
+            match pos {
+                Position::Var(v) => self[*v as usize].meet_with(&t),
+                Position::Func { functor, subterms } => {
+                    let Some(sub) = t.uncons(functor) else {
+                        return None;
+                    };
 
-            if result[res_pos as usize].is_bottom() {
-                return None;
+                    stack.extend(subterms.iter().zip(sub.into_iter().map(Cow::Owned)))
+                }
+                Position::DontCare => {}
             }
         }
 
-        Some(Tup(result))
+        Some(self)
     }
 }
 
@@ -49,7 +64,22 @@ struct TypeTable<T> {
     rows: Vec<Tup<T>>,
 }
 
-impl<T: Meet + Bottom + Clone> TypeTable<T> {
+enum Position<F> {
+    Var(u16),
+    Func {
+        functor: F,
+        subterms: Vec<Position<F>>,
+    },
+    DontCare,
+}
+
+trait Structural<F>: Sized {
+    fn cons(func: F, args: impl Iterator<Item = Self>) -> Self;
+    fn uncons(&self, func: &F) -> Option<Vec<Self>>;
+    fn is_principal(&self, func: &F) -> bool;
+}
+
+impl<T: Clone + PreOrder> TypeTable<T> {
     fn add_row(&mut self, new_row: Tup<T>) {
         for row in &mut self.rows {
             if new_row.leq(&row) {
@@ -82,10 +112,23 @@ impl<T: Meet + Bottom + Clone> TypeTable<T> {
         self.rows.push(new_row.clone())
     }
 
+    // updates self = self union other
+    fn union_with(&mut self, other: &Self) {
+        assert_eq!(self.width, other.width);
+        for row in &other.rows {
+            self.add_row_borrowed(row)
+        }
+    }
+}
+
+impl<T: Bottom + Clone + Meet> TypeTable<T> {
     // computes the meet of self with other
-    // other[i] is unified with self[positions[i]]
+    // other[i] is unified with positions[i](self)
     // this might increase the number of rows quadratically
-    fn meet(&self, other: &Self, positions: &[u16]) -> Self {
+    fn meet<F>(&self, other: &Self, positions: &[Position<F>]) -> Self
+    where
+        T: Structural<F>,
+    {
         debug_assert_eq!(other.width as usize, positions.len());
         let mut result = Self {
             width: self.width,
@@ -95,20 +138,12 @@ impl<T: Meet + Bottom + Clone> TypeTable<T> {
         for row in &self.rows {
             for other_row in &other.rows {
                 // TODO: eliminate comparable elements
-                if let Some(new_row) = row.unify(other_row, positions) {
+                if let Some(new_row) = row.clone().unify(other_row, positions) {
                     result.add_row(new_row)
                 }
             }
         }
 
         result
-    }
-
-    // updates self = self union other
-    fn union_with(&mut self, other: &Self) {
-        assert_eq!(self.width, other.width);
-        for row in &other.rows {
-            self.add_row_borrowed(row)
-        }
     }
 }
