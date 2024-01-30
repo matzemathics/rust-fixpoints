@@ -8,17 +8,27 @@ use crate::lattice::{Bottom, Meet, PreOrder, Top};
 
 use super::{tup::Tup, BodyTerm, Cons, HeadTerm, Uncons};
 
-/// Stores types that can occur at any given variable
-/// position
+/// A table of incomparable tuples of types, i. e.
+/// there are no rows r1, r2, such that for all
+/// columns i, r1[i] <= r2[i].
+///
+/// Supported operation:
+/// - meet (which is a database join) of two tables
+///     according to some specification of what needs to match
+///
+/// - join (which is a union) of two tables with the same width
+///
+/// - new(w), which is the "top element" of all tables with width w
+///
+/// - empty, which is the bottom element, i. e. a table with no rows
+#[derive(Debug, Clone)]
 pub struct TypeTable<T> {
-    width: u16,
     rows: Vec<Tup<T>>,
 }
 
 impl<T: Top> TypeTable<T> {
     pub fn new(width: u16) -> TypeTable<T> {
         Self {
-            width,
             rows: vec![repeat_with(T::top).take(width as usize).collect()],
         }
     }
@@ -26,10 +36,7 @@ impl<T: Top> TypeTable<T> {
 
 impl<T> TypeTable<T> {
     pub fn empty() -> Self {
-        Self {
-            width: 0,
-            rows: vec![],
-        }
+        Self { rows: vec![] }
     }
 }
 
@@ -68,7 +75,11 @@ impl<T: Clone + PreOrder> TypeTable<T> {
 
     // updates self = self union other
     pub fn union_with(&mut self, other: &Self) {
-        assert_eq!(self.width, other.width);
+        if self.rows.len() == 0 {
+            *self = other.clone();
+            return;
+        }
+
         for row in &other.rows {
             self.add_row_borrowed(row)
         }
@@ -83,9 +94,7 @@ impl<T: Bottom + Clone + Meet> TypeTable<T> {
     where
         T: Uncons<F>,
     {
-        debug_assert_eq!(other.width as usize, positions.len());
         let mut result = Self {
-            width: self.width,
             rows: Vec::default(),
         };
 
@@ -168,10 +177,7 @@ impl<T> TypeTable<T> {
             .filter_map(|row| Tup::interpret_head_atom(&row, shape))
             .collect();
 
-        TypeTable {
-            width: shape.len() as u16,
-            rows,
-        }
+        TypeTable { rows }
     }
 }
 
