@@ -113,12 +113,14 @@ impl<T: Hash + Eq + Clone> DependencyGraph<T> {
     }
 }
 
+pub trait Recursor<T, R> {
+    fn recurse(&mut self, arg: T) -> &R;
+}
+
 pub(crate) trait MonotoneTransform<T> {
     type Output;
 
-    fn call<F>(&self, f: F, a: T) -> Self::Output
-    where
-        F: FnMut(T) -> Self::Output;
+    fn call(&self, f: impl Recursor<T, Self::Output>, a: T) -> Self::Output;
 }
 
 pub(crate) struct FixComputation<T, R> {
@@ -159,7 +161,7 @@ where
 
         while !self.dependencies.dom_contains(alpha) {
             self.dependencies.extend(alpha.clone());
-            let beta = tau.call(self.pretended_f(alpha, tau), alpha.clone());
+            let beta = tau.call(self.recursor(alpha, tau), alpha.clone());
             if self.partial_table.adjust(alpha, beta) {
                 self.dependencies.remove(alpha);
             }
@@ -169,19 +171,37 @@ where
         debug_assert_eq!(&a2, alpha);
     }
 
-    pub(crate) fn pretended_f<'a>(
-        &'a mut self,
-        alpha: &'a T,
-        tau: &'a impl MonotoneTransform<T, Output = R>,
-    ) -> impl FnMut(T) -> R + 'a {
-        move |beta| {
-            self.repeat_computation(&beta, tau);
-            let result = self.partial_table.lookup(&beta).unwrap();
-            if self.dependencies.dom_contains(alpha) {
-                self.dependencies.add(alpha, beta);
-            }
-            result.clone()
+    fn recursor<'a, Tau>(&'a mut self, alpha: &'a T, tau: &'a Tau) -> FixRecursor<'a, T, R, Tau>
+    where
+        Tau: MonotoneTransform<T, Output = R>,
+    {
+        FixRecursor {
+            c: self,
+            alpha,
+            tau,
         }
+    }
+}
+
+struct FixRecursor<'a, T, R, Tau> {
+    c: &'a mut FixComputation<T, R>,
+    alpha: &'a T,
+    tau: &'a Tau,
+}
+
+impl<'a, T, R, Tau> Recursor<T, R> for FixRecursor<'a, T, R, Tau>
+where
+    T: Hash + Eq + Clone + Debug,
+    R: Join + Eq + Clone + LocalMinimum<T>,
+    Tau: MonotoneTransform<T, Output = R>,
+{
+    fn recurse(&mut self, arg: T) -> &R {
+        self.c.repeat_computation(&arg, self.tau);
+        let res = self.c.partial_table.lookup(&arg).unwrap();
+        if self.c.dependencies.dom_contains(self.alpha) {
+            self.c.dependencies.add(self.alpha, arg);
+        }
+        res
     }
 }
 
@@ -206,14 +226,11 @@ where
 {
     type Output = T;
 
-    fn call<F>(&self, mut f: F, a: T) -> T
-    where
-        F: FnMut(T) -> T,
-    {
+    fn call(&self, mut f: impl Recursor<T, T>, a: T) -> T {
         if a == T::bot() {
             T::from(1)
         } else {
-            a * f(a - T::from(1))
+            a * *f.recurse(a - T::from(1))
         }
     }
 }
@@ -226,14 +243,11 @@ where
 {
     type Output = T;
 
-    fn call<F>(&self, mut f: F, a: T) -> T
-    where
-        F: FnMut(T) -> T,
-    {
+    fn call(&self, mut f: impl Recursor<T, T>, a: T) -> T {
         if a == T::bot() || a == T::from(1) {
             T::from(1)
         } else {
-            f(a - T::from(1)) + f(a - T::from(2))
+            *f.recurse(a - T::from(1)) + *f.recurse(a - T::from(2))
         }
     }
 }
