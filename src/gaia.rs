@@ -1,42 +1,14 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::sync::Arc;
 
 use crate::fixpoint::MonotoneTransform;
-use crate::lattice::{LubIterator, PreOrder};
 
 use self::abstract_substitution::{AbstractSubstitution, Query};
 
 mod abstract_substitution;
 mod bit_substitution;
 mod type_table;
-
-#[derive(Debug, Clone)]
-pub enum NemoFunctor {
-    Double,
-    StrConst(StrConst),
-    IntConst(IntConst),
-    RdfConst(RdfConst),
-    Null(NullGenerator),
-    Map {
-        tag: Option<TermTag>,
-        keys: Arc<[MapKey]>,
-    },
-    List {
-        tag: Option<TermTag>,
-        length: usize,
-    },
-}
-
-type IntConst = i64;
-type StrConst = Arc<str>;
-type RdfConst = Arc<str>;
-type NullGenerator = usize;
-type MapKey = Arc<str>;
-type TermTag = Arc<str>;
-type Variable = u16;
-
 struct NormalizedClause<F, P> {
     body_atoms: Vec<(P, Vec<Variable>)>,
     variable_equalities: Vec<(Variable, Variable)>,

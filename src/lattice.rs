@@ -18,6 +18,12 @@ pub trait Bottom: PreOrder + Sized {
     fn bot() -> Self;
 }
 
+pub trait Top: PreOrder + Sized {
+    fn is_top(&self) -> bool;
+
+    fn top() -> Self;
+}
+
 pub trait JoinSemiLattice: Sized + Join + Bottom {
     fn join_opt(lhs: Option<&Self>, rhs: Option<&Self>) -> Self {
         match (lhs, rhs) {
