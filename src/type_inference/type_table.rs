@@ -6,8 +6,8 @@ use std::{
 
 use crate::{
     traits::{
-        lattice::{Bottom, Meet, PreOrder, Top},
-        structural::{Cons, InterpretBuiltin, Uncons},
+        lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top},
+        structural::{Arity, Cons, InterpretBuiltin, Uncons},
     },
     util::tup::Tup,
 };
@@ -30,6 +30,20 @@ use super::model::{BodyTerm, HeadTerm};
 #[derive(Debug, Clone)]
 pub struct TypeTable<T> {
     rows: Vec<Tup<T>>,
+}
+
+impl<K, T> LocalMinimum<K> for TypeTable<T> {
+    fn local_minimum(key: &K) -> Self {
+        TypeTable { rows: Vec::new() }
+    }
+}
+
+impl<T: PreOrder> PreOrder for TypeTable<T> {
+    fn leq(&self, other: &Self) -> bool {
+        self.rows
+            .iter()
+            .all(|row| other.rows.iter().any(|other_row| row.leq(other_row)))
+    }
 }
 
 impl<T> TypeTable<T> {
@@ -91,7 +105,7 @@ impl<T: Clone> TypeTable<T> {
     // this might increase the number of rows quadratically
     pub(super) fn meet<F>(&self, other: &Self, positions: &[BodyTerm<F>]) -> Self
     where
-        T: Uncons<F> + Bottom + Meet,
+        T: Uncons<F> + Meet,
     {
         let mut result = Self {
             rows: Vec::default(),
@@ -110,7 +124,7 @@ impl<T: Clone> TypeTable<T> {
 }
 
 impl<T: Clone> Tup<T> {
-    fn interpret_head_term<C>(&self, t: &HeadTerm<C>) -> Option<T>
+    fn interpret_head_term<C>(&self, config: &T::Config, t: &HeadTerm<C>) -> Option<T>
     where
         C: Clone,
         T: Cons<C>,
@@ -120,24 +134,28 @@ impl<T: Clone> Tup<T> {
             HeadTerm::NemoCtor(c, subterms) => {
                 let subterms = subterms
                     .iter()
-                    .map(|term| self.interpret_head_term(term))
+                    .map(|term| self.interpret_head_term(config, term))
                     .collect::<Option<_>>()?;
-                T::cons(c.clone(), subterms)
+                T::cons(config, c.clone(), subterms)
             }
         }
     }
 
-    fn interpret_head_atom<C: Clone>(original: &Self, shape: &[HeadTerm<C>]) -> Option<Self>
+    fn interpret_head_atom<C: Clone>(
+        config: &T::Config,
+        original: &Self,
+        shape: &[HeadTerm<C>],
+    ) -> Option<Self>
     where
         T: Cons<C>,
     {
         shape
             .iter()
-            .map(|term| original.interpret_head_term(term))
+            .map(|term| original.interpret_head_term(config, term))
             .collect()
     }
 
-    fn interpret_body_term<F>(&self, t: &BodyTerm<F>) -> Option<T>
+    fn interpret_body_term<F>(&self, config: &T::Config, t: &BodyTerm<F>) -> Option<T>
     where
         F: Clone,
         T: Cons<F> + Top,
@@ -147,25 +165,32 @@ impl<T: Clone> Tup<T> {
             BodyTerm::Functor { functor, subterms } => {
                 let subterms = subterms
                     .iter()
-                    .map(|t| self.interpret_body_term(t))
+                    .map(|t| self.interpret_body_term(config, t))
                     .collect::<Option<_>>()?;
-                T::cons(functor.clone(), subterms)
+                T::cons(config, functor.clone(), subterms)
             }
             BodyTerm::DontCare => Some(T::top()),
         }
     }
 
-    fn interpret_body_atom<F>(&self, shape: &[BodyTerm<F>]) -> Option<Self>
+    fn interpret_body_atom<F>(&self, config: &T::Config, shape: &[BodyTerm<F>]) -> Option<Self>
     where
         F: Clone,
         T: Cons<F> + Top,
     {
-        shape.iter().map(|t| self.interpret_body_term(t)).collect()
+        shape
+            .iter()
+            .map(|t| self.interpret_body_term(config, t))
+            .collect()
     }
 }
 
 impl<T> TypeTable<T> {
-    pub(super) fn apply_ctor<Ctor>(self, shape: &[HeadTerm<Ctor>]) -> TypeTable<T>
+    pub(super) fn apply_ctor<Ctor>(
+        self,
+        config: &T::Config,
+        shape: &[HeadTerm<Ctor>],
+    ) -> TypeTable<T>
     where
         Ctor: Clone,
         T: Cons<Ctor> + Clone,
@@ -173,7 +198,7 @@ impl<T> TypeTable<T> {
         let rows = self
             .rows
             .into_iter()
-            .filter_map(|row| Tup::interpret_head_atom(&row, shape))
+            .filter_map(|row| Tup::interpret_head_atom(config, &row, shape))
             .collect();
 
         TypeTable { rows }
@@ -181,14 +206,18 @@ impl<T> TypeTable<T> {
 }
 
 impl<T> TypeTable<T> {
-    pub(super) fn apply_builtin<F, Builtin>(&mut self, builtin: &Builtin, shape: &[BodyTerm<F>])
-    where
+    pub(super) fn apply_builtin<F, Builtin>(
+        &mut self,
+        config: &T::Config,
+        builtin: &Builtin,
+        shape: &[BodyTerm<F>],
+    ) where
         F: Clone,
         Builtin: Clone,
-        T: Clone + Top + Cons<F> + Uncons<F> + InterpretBuiltin<Builtin> + Bottom + Meet,
+        T: Clone + Top + Cons<F> + Uncons<F> + InterpretBuiltin<Builtin> + Meet,
     {
         self.rows.retain_mut(|row| {
-            row.interpret_body_atom(shape)
+            row.interpret_body_atom(config, shape)
                 .and_then(|tup| T::interpret(builtin.clone(), tup))
                 .and_then(|assignment| row.unify_with(&assignment, shape).then_some(()))
                 .is_some()

@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 use std::hash::Hash;
 
-use crate::traits::lattice::{Bottom, Meet, PreOrder, Top};
+use crate::traits::lattice::{Meet, PreOrder, Top};
 
 #[derive(Debug, Clone)]
-struct HashLattice<T>(Option<HashSet<T>>);
+pub struct ToppedLattice<T>(pub(super) Option<HashSet<T>>);
 
-impl<T: Eq + Hash> PreOrder for HashLattice<T> {
+impl<T: Eq + Hash> PreOrder for ToppedLattice<T> {
     fn leq(&self, other: &Self) -> bool {
         match &other.0 {
             Some(other) => match &self.0 {
@@ -18,30 +18,19 @@ impl<T: Eq + Hash> PreOrder for HashLattice<T> {
     }
 }
 
-impl<T: Eq + Hash> Bottom for HashLattice<T> {
-    fn is_bottom(&self) -> bool {
-        match &self.0 {
-            Some(s) => s.is_empty(),
-            None => false,
-        }
-    }
+// when defining bottom, only initialize sets, that are actually used!
 
-    fn bot() -> Self {
-        HashLattice(Some(HashSet::new()))
-    }
-}
-
-impl<T: Eq + Hash> Top for HashLattice<T> {
+impl<T: Eq + Hash> Top for ToppedLattice<T> {
     fn is_top(&self) -> bool {
         self.0.is_none()
     }
 
     fn top() -> Self {
-        HashLattice(None)
+        ToppedLattice(None)
     }
 }
 
-impl<T: Hash + Eq + Clone> Meet for HashLattice<T> {
+impl<T: Hash + Eq + Clone> Meet for ToppedLattice<T> {
     fn meet_with(&mut self, other: &Self) {
         match &mut self.0 {
             Some(this) => match &other.0 {
@@ -50,5 +39,11 @@ impl<T: Hash + Eq + Clone> Meet for HashLattice<T> {
             },
             None => *self = other.clone(),
         }
+    }
+}
+
+impl<T: Hash + Eq> ToppedLattice<T> {
+    pub fn subsumes(&self, it: &T) -> bool {
+        self.0.as_ref().map(|s| s.contains(it)).unwrap_or(true)
     }
 }

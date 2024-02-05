@@ -24,7 +24,7 @@ impl<K, V> Default for PartialTable<K, V> {
 impl<K, V> PartialTable<K, V>
 where
     K: Hash + Eq,
-    V: Eq + LocalMinimum<K>,
+    V: PreOrder + LocalMinimum<K>,
 {
     pub(crate) fn extend(&mut self, k: K) {
         debug_assert!(!self.0.contains_key(&k));
@@ -35,7 +35,7 @@ where
     pub(crate) fn adjust<'a>(&'a mut self, k: &'a K, v: V) -> bool {
         debug_assert!(self.0.contains_key(k));
         let entry = self.0.get_mut(k).unwrap();
-        if *entry == v {
+        if v.leq(entry) {
             true
         } else {
             *entry = v;
@@ -141,7 +141,7 @@ impl<T, R> Default for FixComputation<T, R> {
 impl<T, R> FixComputation<T, R>
 where
     T: Hash + Eq + Clone + Debug,
-    R: Join + Eq + Clone + LocalMinimum<T>,
+    R: PreOrder + Clone + LocalMinimum<T>,
 {
     pub(crate) fn repeat_computation(
         &mut self,
@@ -191,7 +191,7 @@ struct FixRecursor<'a, T, R, Tau> {
 impl<'a, T, R, Tau> Recursor<T, R> for FixRecursor<'a, T, R, Tau>
 where
     T: Hash + Eq + Clone + Debug,
-    R: Join + Eq + Clone + LocalMinimum<T>,
+    R: PreOrder + Clone + LocalMinimum<T>,
     Tau: MonotoneTransform<T, Output = R>,
 {
     fn recurse(&mut self, arg: T) -> &R {
@@ -210,7 +210,7 @@ pub fn compute_fixpoint<T, R>(
 ) -> PartialTable<T, R>
 where
     T: PreOrder + Eq + Hash + Debug + Clone,
-    R: Join + Eq + Clone + LocalMinimum<T>,
+    R: PreOrder + Clone + LocalMinimum<T>,
 {
     let mut data: FixComputation<T, R> = FixComputation::default();
     data.repeat_computation(&alpha, &tau);

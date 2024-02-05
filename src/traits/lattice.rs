@@ -8,17 +8,17 @@ pub trait Join: PreOrder {
     fn join(&self, other: &Self) -> Self;
 }
 
-pub(crate) trait Meet: PreOrder {
+pub trait Meet: PreOrder {
     fn meet_with(&mut self, other: &Self);
 }
 
-pub(crate) trait Bottom: PreOrder + Sized {
+pub trait Bottom: PreOrder + Sized {
     fn is_bottom(&self) -> bool;
 
     fn bot() -> Self;
 }
 
-pub(crate) trait Top: PreOrder + Sized {
+pub trait Top: PreOrder + Sized {
     fn is_top(&self) -> bool;
 
     fn top() -> Self;

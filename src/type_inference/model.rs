@@ -1,13 +1,13 @@
-use crate::traits::structural::RuleModel;
+use crate::traits::structural::ConstModel;
 
 pub type Variable = u16;
 
-pub(super) enum HeadTerm<C> {
+pub enum HeadTerm<C> {
     Var(Variable),
     NemoCtor(C, Vec<HeadTerm<C>>),
 }
 
-pub(super) enum BodyTerm<F> {
+pub enum BodyTerm<F> {
     Var(Variable),
     Functor {
         functor: F,
@@ -16,19 +16,19 @@ pub(super) enum BodyTerm<F> {
     DontCare,
 }
 
-pub(super) struct BodyAtom<F, P> {
-    pub(super) predicate: P,
-    pub(super) terms: Vec<BodyTerm<F>>,
+pub struct BodyAtom<F, P> {
+    pub predicate: P,
+    pub terms: Vec<BodyTerm<F>>,
 }
 
-pub(super) struct BodyBuiltin<F, Builtin> {
-    pub(super) builtin: Builtin,
-    pub(super) terms: Vec<BodyTerm<F>>,
+pub struct BodyBuiltin<F, Builtin> {
+    pub builtin: Builtin,
+    pub terms: Vec<BodyTerm<F>>,
 }
 
-pub(super) struct PatClause<M: RuleModel> {
-    pub(super) head: Vec<HeadTerm<M::Constructor>>,
-    pub(super) body_atoms: Vec<BodyAtom<M::Functor, M::Predicate>>,
-    pub(super) body_builtins: Vec<BodyBuiltin<M::Functor, M::Builtin>>,
-    pub(super) body_variables: u16,
+pub struct PatClause<Predicate, C: ConstModel> {
+    pub head: Vec<HeadTerm<C::Constructor>>,
+    pub body_atoms: Vec<BodyAtom<C::Functor, Predicate>>,
+    pub body_builtins: Vec<BodyBuiltin<C::Functor, C::Builtin>>,
+    pub body_variables: u16,
 }

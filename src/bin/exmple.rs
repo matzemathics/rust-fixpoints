@@ -1,27 +1,31 @@
-use crate::NemoFunctor;
+use std::collections::HashMap;
+use std::vec;
+
+use fixpoints::type_inference::fixpoint::compute_fixpoint;
+use fixpoints::type_inference::model::{BodyAtom, BodyTerm, HeadTerm, PatClause};
+use fixpoints::type_inference::Program;
+use fixpoints::type_terms::const_model::{IdentConstant, NemoCtor, NemoFunctor, NemoModel};
+use fixpoints::type_terms::flat_type::FlatType;
 
 fn main() {
     fn nm_str(s: &str) -> NemoFunctor {
-        NemoFunctor::StrConst(s.into())
+        NemoFunctor::Const(IdentConstant::StrConst(s.into()))
     }
 
     fn nm_int(i: i64) -> NemoFunctor {
-        NemoFunctor::IntConst(i)
+        NemoFunctor::Const(IdentConstant::IntConst(i))
     }
 
-    let mut program: HashMap<_, Vec<NormalizedClause<NemoFunctor, _>>> = HashMap::new();
+    let mut program: Program<_, _> = Program::new();
 
-    let mut push_fact = |pred, vals: Vec<_>| {
-        program.entry(pred).or_default().push(NormalizedClause {
-            body_atoms: vec![],
-            variable_equalities: vec![],
-            ctor_equalities: vals
-                .into_iter()
-                .enumerate()
-                .map(|(i, v)| (i as u16, v, vec![]))
-                .collect(),
-            num_variables: 3,
-        });
+    let fact_clause = |vals: Vec<_>| PatClause {
+        head: vals
+            .into_iter()
+            .map(|v| HeadTerm::NemoCtor(NemoCtor::Functor(v), vec![]))
+            .collect(),
+        body_builtins: vec![],
+        body_atoms: vec![],
+        body_variables: 0,
     };
 
     #[cfg(unused)]
@@ -43,25 +47,22 @@ fn main() {
         push_fact(end, vec![nm_str("f")]);
     }
 
-    push_fact(("p", 2), vec![nm_str("a"), nm_str("b")]);
-    push_fact(("p", 2), vec![nm_int(2), nm_int(3)]);
+    program.add_rule(("p", 2), fact_clause(vec![nm_str("a"), nm_str("b")]));
+    program.add_rule(("p", 2), fact_clause(vec![nm_int(2), nm_int(3)]));
 
-    program.entry(("q", 2)).or_default().push(NormalizedClause {
-        body_atoms: vec![("p", vec![0, 1])],
-        variable_equalities: vec![],
-        ctor_equalities: vec![(0, nm_int(2), vec![])],
-        num_variables: 2,
-    });
+    program.add_rule(
+        ("q", 2),
+        PatClause {
+            head: vec![HeadTerm::Var(0), HeadTerm::Var(1)],
+            body_atoms: vec![BodyAtom {
+                predicate: ("p", 2),
+                terms: vec![BodyTerm::Var(0), BodyTerm::Var(1)],
+            }],
+            body_builtins: vec![],
+            body_variables: 2,
+        },
+    );
 
-    let g = Gaia { program };
-
-    let mut td = TypeDescriptor::default();
-    // td.str_constants.push("a".into());
-    let query = Query {
-        subst: BitSubstitution::any(2, Arc::new(td)),
-        predicate: "q",
-    };
-
-    let (pt, _) = compute_fixpoint(query, g);
+    let pt = compute_fixpoint(("q", 2), program.analyse::<FlatType>());
     println!("{pt:#?}");
 }
