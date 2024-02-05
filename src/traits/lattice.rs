@@ -8,23 +8,23 @@ pub trait Join: PreOrder {
     fn join(&self, other: &Self) -> Self;
 }
 
-pub trait Meet: PreOrder {
+pub(crate) trait Meet: PreOrder {
     fn meet_with(&mut self, other: &Self);
 }
 
-pub trait Bottom: PreOrder + Sized {
+pub(crate) trait Bottom: PreOrder + Sized {
     fn is_bottom(&self) -> bool;
 
     fn bot() -> Self;
 }
 
-pub trait Top: PreOrder + Sized {
+pub(crate) trait Top: PreOrder + Sized {
     fn is_top(&self) -> bool;
 
     fn top() -> Self;
 }
 
-pub trait JoinSemiLattice: Sized + Join + Bottom {
+pub(crate) trait JoinSemiLattice: Sized + Join + Bottom {
     fn join_opt(lhs: Option<&Self>, rhs: Option<&Self>) -> Self {
         match (lhs, rhs) {
             (None, None) => Self::bot(),

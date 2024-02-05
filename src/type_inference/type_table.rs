@@ -4,9 +4,15 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::lattice::{Bottom, Meet, PreOrder, Top};
+use crate::{
+    traits::{
+        lattice::{Bottom, Meet, PreOrder, Top},
+        structural::{Cons, InterpretBuiltin, Uncons},
+    },
+    util::tup::Tup,
+};
 
-use super::{tup::Tup, BodyTerm, Cons, HeadTerm, Uncons};
+use super::model::{BodyTerm, HeadTerm};
 
 /// A table of incomparable tuples of types, i. e.
 /// there are no rows r1, r2, such that for all
@@ -16,7 +22,7 @@ use super::{tup::Tup, BodyTerm, Cons, HeadTerm, Uncons};
 /// - meet (which is a database join) of two tables
 ///     according to some specification of what needs to match
 ///
-/// - join (which is a union) of two tables with the same width
+/// - union of two tables with the same width
 ///
 /// - new(w), which is the "top element" of all tables with width w
 ///
@@ -26,8 +32,11 @@ pub struct TypeTable<T> {
     rows: Vec<Tup<T>>,
 }
 
-impl<T: Top> TypeTable<T> {
-    pub fn new(width: u16) -> TypeTable<T> {
+impl<T> TypeTable<T> {
+    pub(super) fn new(width: u16) -> TypeTable<T>
+    where
+        T: Top,
+    {
         Self {
             rows: vec![repeat_with(T::top).take(width as usize).collect()],
         }
@@ -40,8 +49,11 @@ impl<T> TypeTable<T> {
     }
 }
 
-impl<T: Clone + PreOrder> TypeTable<T> {
-    fn add_row(&mut self, new_row: Tup<T>) {
+impl<T: Clone> TypeTable<T> {
+    fn add_row(&mut self, new_row: Tup<T>)
+    where
+        T: PreOrder,
+    {
         for row in &mut self.rows {
             if new_row.leq(&row) {
                 return;
@@ -57,42 +69,29 @@ impl<T: Clone + PreOrder> TypeTable<T> {
         self.rows.push(new_row)
     }
 
-    fn add_row_borrowed(&mut self, new_row: &Tup<T>) {
-        for row in &mut self.rows {
-            if new_row.leq(&row) {
-                return;
-            }
-
-            if row.leq(new_row) {
-                *row = new_row.clone();
-                return;
-            }
-        }
-
-        // new_row is incomparable to all current rows
-        self.rows.push(new_row.clone())
-    }
-
     // updates self = self union other
-    pub fn union_with(&mut self, other: &Self) {
+    pub(super) fn union_with(&mut self, other: Self)
+    where
+        T: PreOrder,
+    {
         if self.rows.len() == 0 {
             *self = other.clone();
             return;
         }
 
-        for row in &other.rows {
-            self.add_row_borrowed(row)
+        for row in other.rows {
+            self.add_row(row)
         }
     }
 }
 
-impl<T: Bottom + Clone + Meet> TypeTable<T> {
+impl<T: Clone> TypeTable<T> {
     // computes the meet of self with other
     // other[i] is unified with positions[i](self)
     // this might increase the number of rows quadratically
     pub(super) fn meet<F>(&self, other: &Self, positions: &[BodyTerm<F>]) -> Self
     where
-        T: Uncons<F>,
+        T: Uncons<F> + Bottom + Meet,
     {
         let mut result = Self {
             rows: Vec::default(),
@@ -181,17 +180,12 @@ impl<T> TypeTable<T> {
     }
 }
 
-pub(super) trait InterpretBuiltin: Sized {
-    type Builtin: Clone;
-
-    fn interpret(builtin: Self::Builtin, tup: Tup<Self>) -> Option<Tup<Self>>;
-}
-
 impl<T> TypeTable<T> {
-    pub(super) fn apply_builtin<F>(&mut self, builtin: &T::Builtin, shape: &[BodyTerm<F>])
+    pub(super) fn apply_builtin<F, Builtin>(&mut self, builtin: &Builtin, shape: &[BodyTerm<F>])
     where
         F: Clone,
-        T: Clone + Top + Cons<F> + Uncons<F> + InterpretBuiltin + Bottom + Meet,
+        Builtin: Clone,
+        T: Clone + Top + Cons<F> + Uncons<F> + InterpretBuiltin<Builtin> + Bottom + Meet,
     {
         self.rows.retain_mut(|row| {
             row.interpret_body_atom(shape)

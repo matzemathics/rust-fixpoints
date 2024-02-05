@@ -7,14 +7,13 @@ use std::ops::Index;
 use std::ops::Mul;
 use std::ops::Sub;
 
-use crate::lattice::BorrowedLubIterator;
-use crate::lattice::Join;
-use crate::lattice::JoinSemiLattice;
-use crate::lattice::LocalMinimum;
-use crate::lattice::PreOrder;
+use crate::traits::lattice::Join;
+use crate::traits::lattice::JoinSemiLattice;
+use crate::traits::lattice::LocalMinimum;
+use crate::traits::lattice::PreOrder;
 
 #[derive(Debug)]
-pub(crate) struct PartialTable<K, V>(HashMap<K, V>);
+pub struct PartialTable<K, V>(HashMap<K, V>);
 
 impl<K, V> Default for PartialTable<K, V> {
     fn default() -> Self {
@@ -46,7 +45,7 @@ where
 }
 
 impl<K: Hash + Eq, V> PartialTable<K, V> {
-    pub(crate) fn lookup<'a>(&'a self, k: &K) -> Option<&'a V> {
+    pub fn lookup<'a>(&'a self, k: &K) -> Option<&'a V> {
         self.0.get(k)
     }
 
@@ -117,7 +116,7 @@ pub trait Recursor<T, R> {
     fn recurse(&mut self, arg: T) -> &R;
 }
 
-pub(crate) trait MonotoneTransform<T> {
+pub trait MonotoneTransform<T> {
     type Output;
 
     fn call(&self, f: impl Recursor<T, Self::Output>, a: T) -> Self::Output;
@@ -205,17 +204,17 @@ where
     }
 }
 
-pub(crate) fn compute_fixpoint<T, R>(
+pub fn compute_fixpoint<T, R>(
     alpha: T,
     tau: impl MonotoneTransform<T, Output = R>,
-) -> (PartialTable<T, R>, DependencyGraph<T>)
+) -> PartialTable<T, R>
 where
     T: PreOrder + Eq + Hash + Debug + Clone,
     R: Join + Eq + Clone + LocalMinimum<T>,
 {
     let mut data: FixComputation<T, R> = FixComputation::default();
     data.repeat_computation(&alpha, &tau);
-    (data.partial_table, data.dependencies)
+    data.partial_table
 }
 
 pub(crate) struct Factorial;
@@ -258,7 +257,7 @@ mod test {
 
     #[test]
     fn test_factorial() {
-        let (table, _) = compute_fixpoint(4u64, Factorial);
+        let table = compute_fixpoint(4u64, Factorial);
         assert_eq!(table.lookup(&4), Some(&24));
     }
 }

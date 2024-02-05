@@ -29,4 +29,3 @@ pub type RdfConst = Arc<str>;
 pub type NullGenerator = usize;
 pub type MapKey = Arc<str>;
 pub type TermTag = Arc<str>;
-pub type Variable = u16;
