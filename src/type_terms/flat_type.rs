@@ -1,8 +1,11 @@
 use std::{collections::HashSet, fmt::Debug, iter::repeat_with, sync::Arc};
 
-use crate::traits::{
-    lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top},
-    structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
+use crate::{
+    traits::{
+        lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top},
+        structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
+    },
+    type_inference::Program,
 };
 
 use super::{
@@ -153,6 +156,10 @@ pub struct FlatType {
 
 impl LocalMinimum<FlatTypeConfig> for FlatType {
     fn local_minimum(config: &FlatTypeConfig) -> Self {
+        // we cannot implement `Bottom`, because when the leq might
+        // break, if empty-set is used, where no constants can appear
+        // anyway (which might cause leq to return false, even though
+        // the value should be greater)
         let mut result = Self {
             std_types: StdTypeBitmap::bot(),
             constants: ToppedLattice(None),
@@ -303,4 +310,33 @@ impl InterpretBuiltin<NemoBuiltin> for FlatType {
 impl TypeDomain for FlatType {
     type Model = NemoModel;
     type Config = FlatTypeConfig;
+
+    fn configure<P>(program: &Program<P, Self::Model>) -> FlatTypeConfig {
+        let mut config = FlatTypeConfig {
+            use_const_set: false,
+            use_func_set: false,
+            use_null_set: false,
+        };
+
+        for clause in program.0.values().flatten() {
+            for ctor in clause.head_ctors() {
+                match ctor {
+                    NemoCtor::Null(_) => config.use_null_set = true,
+                    NemoCtor::Functor(NemoFunctor::Const(_)) => config.use_const_set = true,
+                    NemoCtor::Functor(NemoFunctor::Nested(_)) => config.use_func_set = true,
+                    _ => {}
+                }
+            }
+
+            for functor in clause.body_functors() {
+                match functor {
+                    NemoFunctor::Nested(_) => config.use_func_set = true,
+                    NemoFunctor::Const(_) => config.use_const_set = true,
+                    _ => {}
+                }
+            }
+        }
+
+        config
+    }
 }

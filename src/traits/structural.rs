@@ -1,5 +1,5 @@
 use super::lattice::{LocalMinimum, Meet, Top};
-use crate::util::tup::Tup;
+use crate::{type_inference::Program, util::tup::Tup};
 
 pub trait Uncons<F>: Sized {
     fn uncons(&self, func: &F) -> Option<Vec<Self>>;
@@ -41,4 +41,6 @@ pub trait TypeDomain:
 {
     type Model: ConstModel;
     type Config;
+
+    fn configure<P>(program: &Program<P, Self::Model>) -> assoc!(::Config);
 }

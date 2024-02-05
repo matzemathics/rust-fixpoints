@@ -36,7 +36,7 @@ impl<P: Clone, M: ConstModel> PatClause<P, M> {
     }
 }
 
-pub struct Program<P, C: ConstModel>(HashMap<P, Vec<PatClause<P, C>>>);
+pub struct Program<P, C: ConstModel>(pub(crate) HashMap<P, Vec<PatClause<P, C>>>);
 
 impl<P, C: ConstModel> Program<P, C> {
     pub fn new() -> Self {
@@ -73,9 +73,10 @@ where
     }
 
     pub fn analyse<T: TypeDomain<Model = C>>(self) -> TypeAnalysis<P, T> {
+        let config = T::configure(&self);
         TypeAnalysis {
             program: self,
-            config: todo!(),
+            config,
         }
     }
 }
