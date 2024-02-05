@@ -2,7 +2,7 @@ use std::{collections::HashSet, fmt::Debug, iter::repeat_with, sync::Arc};
 
 use crate::traits::{
     lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top},
-    structural::{Cons, ConstModel, InterpretBuiltin, TypeDomain, Uncons},
+    structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
 };
 
 use super::{
@@ -15,6 +15,7 @@ use super::{
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum StdType {
     Empty = 0,      // term `()`,
     Pair = 1,       // terms of form `(x, y)`
@@ -292,8 +293,8 @@ impl Meet for FlatType {
 
 impl InterpretBuiltin<NemoBuiltin> for FlatType {
     fn interpret(
-        builtin: NemoBuiltin,
-        tup: crate::util::tup::Tup<Self>,
+        _builtin: NemoBuiltin,
+        _tup: crate::util::tup::Tup<Self>,
     ) -> Option<crate::util::tup::Tup<Self>> {
         todo!()
     }

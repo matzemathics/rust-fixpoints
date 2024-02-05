@@ -1,10 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{
-    traits::lattice::{Bottom, Meet},
-    traits::structural::Uncons,
-    util::tup::Tup,
-};
+use crate::{traits::lattice::Meet, traits::structural::Uncons, util::tup::Tup};
 
 use super::model::BodyTerm;
 

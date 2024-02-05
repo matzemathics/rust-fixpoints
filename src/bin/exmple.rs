@@ -1,10 +1,9 @@
-use std::collections::HashMap;
 use std::vec;
 
 use fixpoints::type_inference::fixpoint::compute_fixpoint;
 use fixpoints::type_inference::model::{BodyAtom, BodyTerm, HeadTerm, PatClause};
 use fixpoints::type_inference::Program;
-use fixpoints::type_terms::const_model::{IdentConstant, NemoCtor, NemoFunctor, NemoModel};
+use fixpoints::type_terms::const_model::{IdentConstant, NemoCtor, NemoFunctor};
 use fixpoints::type_terms::flat_type::FlatType;
 
 fn main() {

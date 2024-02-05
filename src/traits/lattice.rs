@@ -41,7 +41,7 @@ pub trait LocalMinimum<K> {
     fn local_minimum(key: &K) -> Self;
 }
 
-impl<T: JoinSemiLattice, K> LocalMinimum<K> for T {
+impl<T: Bottom, K> LocalMinimum<K> for T {
     fn local_minimum(_: &K) -> Self {
         T::bot()
     }

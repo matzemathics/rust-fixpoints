@@ -1,13 +1,9 @@
-use std::{
-    borrow::Cow,
-    iter::repeat_with,
-    ops::{Deref, DerefMut},
-};
+use std::iter::repeat_with;
 
 use crate::{
     traits::{
-        lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top},
-        structural::{Arity, Cons, InterpretBuiltin, Uncons},
+        lattice::{Bottom, Meet, PreOrder, Top},
+        structural::{Cons, InterpretBuiltin, Uncons},
     },
     util::tup::Tup,
 };
@@ -32,9 +28,13 @@ pub struct TypeTable<T> {
     rows: Vec<Tup<T>>,
 }
 
-impl<K, T> LocalMinimum<K> for TypeTable<T> {
-    fn local_minimum(key: &K) -> Self {
-        TypeTable { rows: Vec::new() }
+impl<T: PreOrder> Bottom for TypeTable<T> {
+    fn is_bottom(&self) -> bool {
+        self.rows.len() == 0
+    }
+
+    fn bot() -> Self {
+        Self { rows: Vec::new() }
     }
 }
 

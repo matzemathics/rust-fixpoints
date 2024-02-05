@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use crate::traits::lattice::{Bottom, Join, JoinSemiLattice};
+use crate::traits::lattice::{Bottom, Join};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Bitmap(u64);

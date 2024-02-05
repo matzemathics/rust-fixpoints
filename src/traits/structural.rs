@@ -1,6 +1,5 @@
-use super::lattice::{Bottom, LocalMinimum, Meet, Top};
+use super::lattice::{LocalMinimum, Meet, Top};
 use crate::util::tup::Tup;
-use std::{backtrace, hash::Hash};
 
 pub trait Uncons<F>: Sized {
     fn uncons(&self, func: &F) -> Option<Vec<Self>>;
@@ -42,8 +41,4 @@ pub trait TypeDomain:
 {
     type Model: ConstModel;
     type Config;
-}
-
-pub trait Arity {
-    fn arity(&self) -> usize;
 }

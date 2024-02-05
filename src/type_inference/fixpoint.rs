@@ -3,11 +3,10 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Add;
-use std::ops::Index;
+
 use std::ops::Mul;
 use std::ops::Sub;
 
-use crate::traits::lattice::Join;
 use crate::traits::lattice::JoinSemiLattice;
 use crate::traits::lattice::LocalMinimum;
 use crate::traits::lattice::PreOrder;
