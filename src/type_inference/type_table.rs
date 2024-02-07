@@ -123,68 +123,6 @@ impl<T: Clone> TypeTable<T> {
     }
 }
 
-impl<T: Clone> Tup<T> {
-    fn interpret_head_term<C>(&self, config: &T::Config, t: &HeadTerm<C>) -> Option<T>
-    where
-        C: Clone,
-        T: Cons<C>,
-    {
-        match t {
-            HeadTerm::Var(v) => Some(self[*v as usize].clone()),
-            HeadTerm::NemoCtor(c, subterms) => {
-                let subterms = subterms
-                    .iter()
-                    .map(|term| self.interpret_head_term(config, term))
-                    .collect::<Option<_>>()?;
-                T::cons(config, c.clone(), subterms)
-            }
-        }
-    }
-
-    fn interpret_head_atom<C: Clone>(
-        config: &T::Config,
-        original: &Self,
-        shape: &[HeadTerm<C>],
-    ) -> Option<Self>
-    where
-        T: Cons<C>,
-    {
-        shape
-            .iter()
-            .map(|term| original.interpret_head_term(config, term))
-            .collect()
-    }
-
-    fn interpret_body_term<F>(&self, config: &T::Config, t: &BodyTerm<F>) -> Option<T>
-    where
-        F: Clone,
-        T: Cons<F> + Top,
-    {
-        match t {
-            BodyTerm::Var(v) => Some(self[*v as usize].clone()),
-            BodyTerm::Functor { functor, subterms } => {
-                let subterms = subterms
-                    .iter()
-                    .map(|t| self.interpret_body_term(config, t))
-                    .collect::<Option<_>>()?;
-                T::cons(config, functor.clone(), subterms)
-            }
-            BodyTerm::DontCare => Some(T::top()),
-        }
-    }
-
-    fn interpret_body_atom<F>(&self, config: &T::Config, shape: &[BodyTerm<F>]) -> Option<Self>
-    where
-        F: Clone,
-        T: Cons<F> + Top,
-    {
-        shape
-            .iter()
-            .map(|t| self.interpret_body_term(config, t))
-            .collect()
-    }
-}
-
 impl<T> TypeTable<T> {
     pub(super) fn apply_ctor<Ctor>(
         self,
