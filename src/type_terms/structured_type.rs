@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     traits::{
         lattice::{LocalMinimum, Meet, PreOrder, Top},
@@ -10,7 +12,11 @@ use crate::{
 use super::const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NemoModel};
 
 #[derive(Debug, Clone)]
-pub struct StructuredType;
+pub struct StructuredType {
+    flat_type: (),
+    backward_edge: Option<NonZeroU8>,
+    and_nodes: HashMap<NemoFunctor, Vec<StructuredType>>,
+}
 
 pub type StructuredTypeConfig = ();
 
@@ -27,10 +33,6 @@ impl Meet for StructuredType {
 }
 
 impl Top for StructuredType {
-    fn is_top(&self) -> bool {
-        todo!()
-    }
-
     fn top() -> Self {
         todo!()
     }

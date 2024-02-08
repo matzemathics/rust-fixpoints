@@ -21,10 +21,6 @@ impl<T: Eq + Hash> PreOrder for ToppedLattice<T> {
 // when defining bottom, only initialize sets, that are actually used!
 
 impl<T: Eq + Hash> Top for ToppedLattice<T> {
-    fn is_top(&self) -> bool {
-        self.0.is_none()
-    }
-
     fn top() -> Self {
         ToppedLattice(None)
     }

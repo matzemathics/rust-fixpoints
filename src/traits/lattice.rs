@@ -19,8 +19,6 @@ pub trait Bottom: PreOrder + Sized {
 }
 
 pub trait Top: PreOrder + Sized {
-    fn is_top(&self) -> bool;
-
     fn top() -> Self;
 }
 

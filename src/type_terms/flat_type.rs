@@ -122,10 +122,6 @@ impl Top for StdTypeBitmap {
     fn top() -> Self {
         Self((1 << StdType::Max.discriminant()) - 1)
     }
-
-    fn is_top(&self) -> bool {
-        (self.0 & Self::top().0) == Self::top().0
-    }
 }
 
 impl Meet for StdTypeBitmap {
@@ -182,13 +178,6 @@ impl LocalMinimum<FlatTypeConfig> for FlatType {
 }
 
 impl Top for FlatType {
-    fn is_top(&self) -> bool {
-        self.std_types.is_top()
-            && self.constants.is_top()
-            && self.nulls.is_top()
-            && self.functors.is_top()
-    }
-
     fn top() -> Self {
         Self {
             std_types: StdTypeBitmap::top(),
