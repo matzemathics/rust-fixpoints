@@ -54,7 +54,7 @@ impl<T: Clone> Tup<T> {
     {
         match t {
             HeadTerm::Var(v) => Some(self[*v as usize].clone()),
-            HeadTerm::NemoCtor(c, subterms) => {
+            HeadTerm::Ctor(c, subterms) => {
                 let subterms = subterms
                     .iter()
                     .map(|term| self.interpret_head_term(config, term))

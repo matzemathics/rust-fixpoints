@@ -5,7 +5,7 @@ pub type Variable = u16;
 #[derive(Debug, Clone)]
 pub enum HeadTerm<C> {
     Var(Variable),
-    NemoCtor(C, Vec<HeadTerm<C>>),
+    Ctor(C, Vec<HeadTerm<C>>),
 }
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ impl<P, C: ConstModel> PatClause<P, C> {
 
                     match node {
                         HeadTerm::Var(_) => continue,
-                        HeadTerm::NemoCtor(ctor, subterms) => {
+                        HeadTerm::Ctor(ctor, subterms) => {
                             self.stack.extend(subterms);
                             break Some(ctor);
                         }

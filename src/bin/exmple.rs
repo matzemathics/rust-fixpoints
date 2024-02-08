@@ -20,7 +20,7 @@ fn main() {
     let fact_clause = |vals: Vec<_>| PatClause {
         head: vals
             .into_iter()
-            .map(|v| HeadTerm::NemoCtor(NemoCtor::Functor(v), vec![]))
+            .map(|v| HeadTerm::Ctor(NemoCtor::Functor(v), vec![]))
             .collect(),
         body_builtins: vec![],
         body_atoms: vec![],
