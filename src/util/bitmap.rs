@@ -55,8 +55,4 @@ impl Bottom for Bitmap {
     fn bot() -> Self {
         Self::zeroed()
     }
-
-    fn is_bottom(&self) -> bool {
-        self.is_zeroed()
-    }
 }

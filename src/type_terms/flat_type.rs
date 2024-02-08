@@ -109,10 +109,6 @@ impl PreOrder for StdTypeBitmap {
 }
 
 impl Bottom for StdTypeBitmap {
-    fn is_bottom(&self) -> bool {
-        self.0 == 0
-    }
-
     fn bot() -> Self {
         Self(0)
     }

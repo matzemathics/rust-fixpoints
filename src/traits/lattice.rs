@@ -13,8 +13,6 @@ pub trait Meet: PreOrder {
 }
 
 pub trait Bottom: PreOrder + Sized {
-    fn is_bottom(&self) -> bool;
-
     fn bot() -> Self;
 }
 
@@ -88,10 +86,6 @@ impl Bottom for u64 {
     fn bot() -> Self {
         0
     }
-
-    fn is_bottom(&self) -> bool {
-        self.eq(&0)
-    }
 }
 
 impl Join for u128 {
@@ -103,10 +97,6 @@ impl Join for u128 {
 impl Bottom for u128 {
     fn bot() -> Self {
         0
-    }
-
-    fn is_bottom(&self) -> bool {
-        *self == 0
     }
 }
 

@@ -29,10 +29,6 @@ pub struct TypeTable<T> {
 }
 
 impl<T: PreOrder> Bottom for TypeTable<T> {
-    fn is_bottom(&self) -> bool {
-        self.rows.len() == 0
-    }
-
     fn bot() -> Self {
         Self { rows: Vec::new() }
     }
