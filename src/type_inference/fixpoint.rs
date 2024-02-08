@@ -7,7 +7,7 @@ use std::ops::Add;
 use std::ops::Mul;
 use std::ops::Sub;
 
-use crate::traits::lattice::JoinSemiLattice;
+use crate::traits::lattice::Bottom;
 use crate::traits::lattice::LocalMinimum;
 use crate::traits::lattice::PreOrder;
 
@@ -220,12 +220,12 @@ pub(crate) struct Factorial;
 
 impl<T> MonotoneTransform<T> for Factorial
 where
-    T: Eq + Mul<Output = T> + Sub<Output = T> + From<u8> + Copy + JoinSemiLattice,
+    T: Eq + Mul<Output = T> + Sub<Output = T> + From<u8> + Copy,
 {
     type Output = T;
 
     fn call(&self, mut f: impl Recursor<T, T>, a: T) -> T {
-        if a == T::bot() {
+        if a == T::from(0) {
             T::from(1)
         } else {
             a * *f.recurse(a - T::from(1))
@@ -237,12 +237,12 @@ pub(crate) struct Fib;
 
 impl<T> MonotoneTransform<T> for Fib
 where
-    T: Eq + Mul<Output = T> + Sub<Output = T> + Add<Output = T> + From<u8> + Copy + JoinSemiLattice,
+    T: Eq + Mul<Output = T> + Sub<Output = T> + Add<Output = T> + From<u8> + Copy,
 {
     type Output = T;
 
     fn call(&self, mut f: impl Recursor<T, T>, a: T) -> T {
-        if a == T::bot() || a == T::from(1) {
+        if a == T::from(0) || a == T::from(1) {
             T::from(1)
         } else {
             *f.recurse(a - T::from(1)) + *f.recurse(a - T::from(2))
