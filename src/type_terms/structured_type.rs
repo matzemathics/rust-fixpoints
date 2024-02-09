@@ -1,4 +1,4 @@
-use std::{collections::HashMap, num::NonZeroU8};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     traits::{
@@ -9,16 +9,47 @@ use crate::{
     util::tup::Tup,
 };
 
-use super::const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NemoModel};
+use super::{
+    const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NemoModel, NestedFunctor},
+    flat_type::{FlatType, FlatTypeConfig},
+};
 
 #[derive(Debug, Clone)]
 pub struct StructuredType {
-    flat_type: (),
-    backward_edge: Option<NonZeroU8>,
-    and_nodes: HashMap<NemoFunctor, Vec<StructuredType>>,
+    start: TypeNode,
+    grammar: TypeGrammar,
 }
 
-pub type StructuredTypeConfig = ();
+#[derive(Debug, Clone)]
+enum TypeNode {
+    Any,
+    TypeNode {
+        flat_types: FlatType,
+        principal_functors: HashSet<NestedFunctor>,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct TypeGrammar(HashMap<NestedFunctor, Vec<TypeNode>>);
+
+impl TypeGrammar {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    fn get(&self, functor: &NestedFunctor) -> Option<&[TypeNode]> {
+        self.0.get(functor).map(Vec::as_slice)
+    }
+
+    fn sub_grammar<'a>(&self, funcs: impl IntoIterator<Item = &'a NestedFunctor>) -> Self {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StructuredTypeConfig {
+    flat_config: FlatTypeConfig,
+}
 
 impl PreOrder for StructuredType {
     fn leq(&self, other: &Self) -> bool {
@@ -34,7 +65,10 @@ impl Meet for StructuredType {
 
 impl Top for StructuredType {
     fn top() -> Self {
-        todo!()
+        Self {
+            start: TypeNode::Any,
+            grammar: TypeGrammar::new(),
+        }
     }
 }
 
@@ -46,7 +80,45 @@ impl InterpretBuiltin<NemoBuiltin> for StructuredType {
 
 impl Uncons<NemoFunctor> for StructuredType {
     fn uncons(&self, func: &NemoFunctor) -> Option<Vec<Self>> {
-        todo!()
+        let TypeNode::TypeNode {
+            flat_types,
+            principal_functors,
+        } = &self.start
+        else {
+            todo!()
+        };
+
+        let NemoFunctor::Nested(func) = func else {
+            todo!()
+        };
+
+        if !principal_functors.contains(func) {
+            return None;
+        }
+
+        let subnodes = self
+            .grammar
+            .get(func)
+            .expect("func is principal functor, so it must have a description");
+
+        let mut result = Vec::new();
+        // efficiently split the grammar -- hard
+        for subnode in subnodes {
+            let TypeNode::TypeNode {
+                flat_types,
+                principal_functors,
+            } = subnode
+            else {
+                result.push(Self::top());
+                continue;
+            };
+
+            let grammar = self.grammar.sub_grammar(principal_functors);
+            let start = subnode.clone();
+            result.push(Self { start, grammar });
+        }
+
+        Some(result)
     }
 }
 
@@ -62,7 +134,11 @@ impl Cons<NemoCtor> for StructuredType {
     type Config = StructuredTypeConfig;
 
     fn cons(config: &Self::Config, ctor: NemoCtor, subterms: Vec<Self>) -> Option<Self> {
-        todo!()
+        match ctor {
+            NemoCtor::Aggregate => todo!(),
+            NemoCtor::Null(_) => todo!(),
+            NemoCtor::Functor(f) => Self::cons(config, f, subterms),
+        }
     }
 }
 
