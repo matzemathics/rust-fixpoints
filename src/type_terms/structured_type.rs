@@ -1,6 +1,8 @@
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
+    hash::Hash,
     iter::repeat_with,
+    vec,
 };
 
 use crate::{
@@ -161,6 +163,24 @@ impl Cons<NemoFunctor> for StructuredType {
     type Config = StructuredTypeConfig;
 
     fn cons(config: &Self::Config, ctor: NemoFunctor, subterms: Vec<Self>) -> Option<Self> {
+        let NemoFunctor::Nested(func) = ctor else {
+            let flat_types = FlatType::cons(&config.flat_config, ctor, vec![])?;
+            let start = TypeNode::TypeNode {
+                flat_types,
+                principal_functors: HashSet::new(),
+            };
+
+            return Some(Self {
+                start,
+                grammar: TypeGrammar::new(),
+            });
+        };
+
+        let start = TypeNode::TypeNode {
+            flat_types: FlatType::local_minimum(&config.flat_config),
+            principal_functors: HashSet::from([func]),
+        };
+
         todo!()
     }
 }
