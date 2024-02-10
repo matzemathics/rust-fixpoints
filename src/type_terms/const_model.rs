@@ -34,7 +34,7 @@ impl NestedFunctor {
 pub enum IdentConstant {
     StrConst(StrConst),
     IntConst(IntConst),
-    RdfConst(RdfConst),
+    IriConst(IriConst),
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ pub enum NemoCtor {
 
 pub type IntConst = i64;
 pub type StrConst = Arc<str>;
-pub type RdfConst = Arc<str>;
+pub type IriConst = Arc<str>;
 pub type NullGenerator = usize;
 pub type MapKey = Arc<str>;
 pub type TermTag = Arc<str>;

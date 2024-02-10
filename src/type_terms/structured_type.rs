@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{hash_map, HashMap, HashSet},
     iter::repeat_with,
     vec,
 };
@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NemoModel, NestedFunctor},
-    flat_type::{FlatType, FlatTypeConfig},
+    old_flat_type::{FlatType, FlatTypeConfig},
 };
 
 #[derive(Debug, Clone)]
@@ -50,7 +50,7 @@ impl TypeGrammar {
         let mut result = HashMap::new();
 
         while let Some(current) = visit.pop() {
-            let Entry::Vacant(entry) = result.entry(current.clone()) else {
+            let hash_map::Entry::Vacant(entry) = result.entry(current.clone()) else {
                 continue;
             };
 
@@ -76,12 +76,47 @@ impl TypeGrammar {
         Self(result)
     }
 
-    fn add_rule(&mut self, func: NestedFunctor, args: Vec<TypeNode>) {
-        todo!()
+    fn add_rule(
+        &mut self,
+        config: &StructuredTypeConfig,
+        func: NestedFunctor,
+        args: Vec<TypeNode>,
+    ) {
+        let mut entry = match self.0.entry(func) {
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(args);
+                return;
+            }
+            hash_map::Entry::Occupied(entry) => entry,
+        };
+
+        for (current, new) in entry.get_mut().iter_mut().zip(args) {
+            let TypeNode::TypeNode {
+                flat_types,
+                principal_functors,
+            } = current
+            else {
+                continue;
+            };
+
+            let TypeNode::TypeNode {
+                flat_types: new_flat_types,
+                principal_functors: new_functors,
+            } = new
+            else {
+                *current = TypeNode::Any;
+                continue;
+            };
+
+            //flat_types.union_with(config.flat_config, new_flat_types);
+            principal_functors.extend(new_functors);
+        }
     }
 
-    fn union_with(&mut self, other: TypeGrammar) {
-        todo!()
+    fn union_with(&mut self, config: &StructuredTypeConfig, other: TypeGrammar) {
+        for (func, args) in other.0 {
+            self.add_rule(config, func, args)
+        }
     }
 }
 
@@ -192,11 +227,11 @@ impl Cons<NemoFunctor> for StructuredType {
         let mut start_rule = Vec::new();
 
         for subterm in subterms {
-            grammar.union_with(subterm.grammar);
+            grammar.union_with(config, subterm.grammar);
             start_rule.push(subterm.start);
         }
 
-        grammar.add_rule(func, start_rule);
+        grammar.add_rule(config, func, start_rule);
         Some(Self { start, grammar })
     }
 }
@@ -243,7 +278,7 @@ mod test {
         },
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
-            flat_type::{FlatType, FlatTypeConfig},
+            old_flat_type::{FlatType, FlatTypeConfig},
         },
     };
 
@@ -256,7 +291,7 @@ mod test {
             length: 2,
         };
 
-        let nil = NemoFunctor::Const(IdentConstant::RdfConst("<nil>".into()));
+        let nil = NemoFunctor::Const(IdentConstant::IriConst("<nil>".into()));
         let flat_type_config = FlatTypeConfig::const_set();
 
         let list_node = TypeNode::TypeNode {

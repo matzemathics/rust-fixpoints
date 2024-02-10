@@ -8,6 +8,10 @@ pub trait Meet: PreOrder {
     fn meet_with(&mut self, other: &Self);
 }
 
+pub trait Union: PreOrder {
+    fn union_with(&mut self, other: &Self);
+}
+
 pub trait Bottom: PreOrder + Sized {
     fn bot() -> Self;
 }
@@ -35,5 +39,29 @@ impl<T: PartialOrd> PreOrder for T {
 impl Bottom for u64 {
     fn bot() -> Self {
         0
+    }
+}
+
+impl Meet for bool {
+    fn meet_with(&mut self, other: &Self) {
+        *self &= *other;
+    }
+}
+
+impl Union for bool {
+    fn union_with(&mut self, other: &Self) {
+        *self |= *other;
+    }
+}
+
+impl Top for bool {
+    fn top() -> Self {
+        true
+    }
+}
+
+impl Bottom for bool {
+    fn bot() -> Self {
+        false
     }
 }
