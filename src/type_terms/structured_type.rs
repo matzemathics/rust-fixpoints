@@ -1,4 +1,7 @@
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::{
+    collections::{hash_map::Entry, HashMap, HashSet},
+    iter::repeat_with,
+};
 
 use crate::{
     traits::{
@@ -108,41 +111,46 @@ impl InterpretBuiltin<NemoBuiltin> for StructuredType {
 impl Uncons<NemoFunctor> for StructuredType {
     fn uncons(&self, func: &NemoFunctor) -> Option<Vec<Self>> {
         let TypeNode::TypeNode {
-            flat_types,
             principal_functors,
+            flat_types,
         } = &self.start
         else {
-            todo!()
+            return match func {
+                NemoFunctor::Double => Some(vec![]),
+                NemoFunctor::Const(_) => Some(vec![]),
+                NemoFunctor::Nested(nested) => {
+                    Some(repeat_with(Self::top).take(nested.arity()).collect())
+                }
+            };
         };
 
-        let NemoFunctor::Nested(func) = func else {
-            todo!()
+        let NemoFunctor::Nested(nested) = func else {
+            let _ = flat_types.uncons(func)?;
+            return Some(vec![]);
         };
 
-        if !principal_functors.contains(func) {
+        if !principal_functors.contains(nested) {
             return None;
         }
 
         let subnodes = self
             .grammar
-            .get(func)
+            .get(nested)
             .expect("func is principal functor, so it must have a description");
 
         let mut result = Vec::new();
-        // efficiently split the grammar -- hard
         for subnode in subnodes {
-            let TypeNode::TypeNode {
-                flat_types,
-                principal_functors,
-            } = subnode
-            else {
-                result.push(Self::top());
-                continue;
-            };
+            match subnode {
+                TypeNode::Any => result.push(Self::top()),
 
-            let grammar = self.grammar.sub_grammar(principal_functors);
-            let start = subnode.clone();
-            result.push(Self { start, grammar });
+                TypeNode::TypeNode {
+                    principal_functors, ..
+                } => {
+                    let grammar = self.grammar.sub_grammar(principal_functors);
+                    let start = subnode.clone();
+                    result.push(Self { start, grammar });
+                }
+            }
         }
 
         Some(result)
