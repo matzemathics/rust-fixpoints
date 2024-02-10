@@ -19,8 +19,8 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub struct StructuredType {
-    start: TypeNode,
-    grammar: TypeGrammar,
+    pub(self) start: TypeNode,
+    pub(self) grammar: TypeGrammar,
 }
 
 #[derive(Debug, Clone)]
@@ -190,5 +190,73 @@ impl TypeDomain for StructuredType {
 
     fn configure<P>(program: &Program<P, NemoModel>) -> StructuredTypeConfig {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{
+        collections::{HashMap, HashSet},
+        vec,
+    };
+
+    use crate::{
+        traits::{
+            lattice::Top,
+            structural::{Cons, Uncons},
+        },
+        type_terms::{
+            const_model::{IdentConstant, NemoFunctor, NestedFunctor},
+            flat_type::{FlatType, FlatTypeConfig},
+        },
+    };
+
+    use super::{StructuredType, TypeGrammar, TypeNode};
+
+    #[test]
+    fn uncons_list() {
+        let list_cons = NestedFunctor::List {
+            tag: Some("::".into()),
+            length: 2,
+        };
+
+        let nil = NemoFunctor::Const(IdentConstant::RdfConst("<nil>".into()));
+        let flat_type_config = FlatTypeConfig::const_set();
+
+        let list_node = TypeNode::TypeNode {
+            flat_types: FlatType::cons(&flat_type_config, nil, vec![]).unwrap(),
+            principal_functors: HashSet::from([list_cons.clone()]),
+        };
+
+        let list_grammar = TypeGrammar(HashMap::from([(
+            list_cons.clone(),
+            vec![TypeNode::Any, list_node.clone()],
+        )]));
+
+        let structured_type = StructuredType {
+            start: list_node.clone(),
+            grammar: list_grammar,
+        };
+
+        let result = structured_type
+            .uncons(&NemoFunctor::Nested(list_cons.clone()))
+            .unwrap();
+        assert_eq!(result.len(), 2);
+
+        // check first value is top
+        assert!(matches!(result[0].start, TypeNode::Any));
+        assert_eq!(result[0].grammar.0.len(), 0);
+
+        // check second value is list
+        let TypeNode::TypeNode {
+            flat_types,
+            principal_functors,
+        } = &result[1].start
+        else {
+            panic!("unexpected: list[1] = any")
+        };
+
+        assert_eq!(principal_functors, &HashSet::from([list_cons]));
+        // todo: check flat_types = { nil }
     }
 }

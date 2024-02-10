@@ -191,6 +191,16 @@ pub struct FlatTypeConfig {
     use_null_set: bool,
 }
 
+impl FlatTypeConfig {
+    pub(super) fn const_set() -> Self {
+        FlatTypeConfig {
+            use_const_set: true,
+            use_func_set: false,
+            use_null_set: false,
+        }
+    }
+}
+
 impl PreOrder for FlatType {
     fn leq(&self, other: &Self) -> bool {
         self.std_types.leq(&other.std_types)
