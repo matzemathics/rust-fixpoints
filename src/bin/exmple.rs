@@ -4,7 +4,7 @@ use fixpoints::type_inference::fixpoint::compute_fixpoint;
 use fixpoints::type_inference::model::{BodyAtom, BodyTerm, HeadTerm, PatClause};
 use fixpoints::type_inference::Program;
 use fixpoints::type_terms::const_model::{IdentConstant, NemoCtor, NemoFunctor};
-use fixpoints::type_terms::old_flat_type::FlatType;
+use fixpoints::type_terms::structured_type::StructuredType;
 
 fn main() {
     fn nm_str(s: &str) -> NemoFunctor {
@@ -62,6 +62,6 @@ fn main() {
         },
     );
 
-    let pt = compute_fixpoint(("q", 2), program.analyse::<FlatType>());
+    let pt = compute_fixpoint(("q", 2), program.analyse::<StructuredType>());
     println!("{pt:#?}");
 }

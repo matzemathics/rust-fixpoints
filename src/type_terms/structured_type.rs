@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     traits::{
-        lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top},
+        lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top, Union},
         structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
     },
     type_inference::Program,
@@ -78,7 +78,7 @@ impl TypeGrammar {
 
     fn add_rule(
         &mut self,
-        config: &StructuredTypeConfig,
+        _config: &StructuredTypeConfig,
         func: NestedFunctor,
         args: Vec<TypeNode>,
     ) {
@@ -108,7 +108,7 @@ impl TypeGrammar {
                 continue;
             };
 
-            //flat_types.union_with(config.flat_config, new_flat_types);
+            flat_types.union_with(&new_flat_types);
             principal_functors.extend(new_functors);
         }
     }
@@ -247,8 +247,13 @@ impl Cons<NemoCtor> for StructuredType {
 }
 
 impl LocalMinimum<StructuredTypeConfig> for StructuredType {
-    fn local_minimum(key: &StructuredTypeConfig) -> Self {
-        todo!()
+    fn local_minimum(_key: &StructuredTypeConfig) -> Self {
+        let start = TypeNode::TypeNode {
+            flat_types: FlatType::bot(),
+            principal_functors: HashSet::new(),
+        };
+        let grammar = TypeGrammar::new();
+        Self { start, grammar }
     }
 }
 
@@ -258,7 +263,7 @@ impl TypeDomain for StructuredType {
     type Config = StructuredTypeConfig;
 
     fn configure<P>(program: &Program<P, NemoModel>) -> StructuredTypeConfig {
-        todo!()
+        StructuredTypeConfig {}
     }
 }
 
@@ -270,10 +275,7 @@ mod test {
     };
 
     use crate::{
-        traits::{
-            lattice::Top,
-            structural::{Cons, Uncons},
-        },
+        traits::structural::Uncons,
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
             flat_type::FlatType,
