@@ -68,4 +68,12 @@ impl<T: Hash + Eq> ToppedLattice<T> {
     pub fn subsumes(&self, it: &T) -> bool {
         self.0.as_ref().map(|s| s.contains(it)).unwrap_or(true)
     }
+
+    pub fn insert(&mut self, it: T) -> bool {
+        let Some(inner) = &mut self.0 else {
+            return false;
+        };
+
+        inner.insert(it)
+    }
 }

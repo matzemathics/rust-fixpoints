@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     traits::{
-        lattice::{LocalMinimum, Meet, PreOrder, Top},
+        lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top},
         structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
     },
     type_inference::Program,
@@ -15,13 +15,13 @@ use crate::{
 
 use super::{
     const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NemoModel, NestedFunctor},
-    old_flat_type::{FlatType, FlatTypeConfig},
+    flat_type::FlatType,
 };
 
 #[derive(Debug, Clone)]
 pub struct StructuredType {
-    pub(self) start: TypeNode,
-    pub(self) grammar: TypeGrammar,
+    start: TypeNode,
+    grammar: TypeGrammar,
 }
 
 #[derive(Debug, Clone)]
@@ -121,9 +121,7 @@ impl TypeGrammar {
 }
 
 #[derive(Debug, Clone)]
-pub struct StructuredTypeConfig {
-    flat_config: FlatTypeConfig,
-}
+pub struct StructuredTypeConfig {}
 
 impl PreOrder for StructuredType {
     fn leq(&self, other: &Self) -> bool {
@@ -169,7 +167,7 @@ impl Uncons<NemoFunctor> for StructuredType {
         };
 
         let NemoFunctor::Nested(nested) = func else {
-            let _ = flat_types.uncons(func)?;
+            let _ = flat_types.contains(func).then_some(())?;
             return Some(vec![]);
         };
 
@@ -206,7 +204,7 @@ impl Cons<NemoFunctor> for StructuredType {
 
     fn cons(config: &Self::Config, ctor: NemoFunctor, subterms: Vec<Self>) -> Option<Self> {
         let NemoFunctor::Nested(func) = ctor else {
-            let flat_types = FlatType::cons(&config.flat_config, ctor, vec![])?;
+            let flat_types = FlatType::from_constant(ctor);
             let start = TypeNode::TypeNode {
                 flat_types,
                 principal_functors: HashSet::new(),
@@ -219,7 +217,7 @@ impl Cons<NemoFunctor> for StructuredType {
         };
 
         let start = TypeNode::TypeNode {
-            flat_types: FlatType::local_minimum(&config.flat_config),
+            flat_types: FlatType::bot(),
             principal_functors: HashSet::from([func.clone()]),
         };
 
@@ -278,7 +276,7 @@ mod test {
         },
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
-            old_flat_type::{FlatType, FlatTypeConfig},
+            flat_type::FlatType,
         },
     };
 
@@ -292,10 +290,9 @@ mod test {
         };
 
         let nil = NemoFunctor::Const(IdentConstant::IriConst("<nil>".into()));
-        let flat_type_config = FlatTypeConfig::const_set();
 
         let list_node = TypeNode::TypeNode {
-            flat_types: FlatType::cons(&flat_type_config, nil, vec![]).unwrap(),
+            flat_types: FlatType::from_constant(nil.clone()),
             principal_functors: HashSet::from([list_cons.clone()]),
         };
 
@@ -328,6 +325,6 @@ mod test {
         };
 
         assert_eq!(principal_functors, &HashSet::from([list_cons]));
-        // todo: check flat_types = { nil }
+        assert_eq!(flat_types, &FlatType::from_constant(nil));
     }
 }

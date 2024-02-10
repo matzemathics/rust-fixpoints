@@ -73,6 +73,20 @@ impl IntType {
             _ => self.negative63,
         }
     }
+
+    pub fn insert(&mut self, val: i64) {
+        match val {
+            i if i >= 2i64.pow(32) => self.positive63 = true,
+            i if i >= 2i64.pow(31) => self.positive32 = true,
+            i if i >= 0 => {
+                self.positive31.insert(i);
+            }
+            i if i >= -(2i64.pow(31)) => {
+                self.negative31.insert(i);
+            }
+            _ => self.negative63 = true,
+        }
+    }
 }
 
 prod_lattice! {
@@ -98,5 +112,23 @@ impl FlatType {
             NemoFunctor::Const(IdentConstant::IriConst(iri)) => self.iri.subsumes(iri),
             NemoFunctor::Nested(_) => unimplemented!(),
         }
+    }
+
+    pub fn from_constant(val: NemoFunctor) -> Self {
+        let mut result = Self::bot();
+
+        match val {
+            NemoFunctor::Double => result.double = true,
+            NemoFunctor::Const(IdentConstant::IntConst(i)) => result.integer.insert(i),
+            NemoFunctor::Const(IdentConstant::StrConst(s)) => {
+                result.string.insert(s);
+            }
+            NemoFunctor::Const(IdentConstant::IriConst(iri)) => {
+                result.iri.insert(iri);
+            }
+            NemoFunctor::Nested(_) => unimplemented!(),
+        }
+
+        result
     }
 }
