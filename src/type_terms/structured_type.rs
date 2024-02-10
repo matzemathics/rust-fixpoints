@@ -1,6 +1,5 @@
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
-    hash::Hash,
     iter::repeat_with,
     vec,
 };
@@ -75,6 +74,14 @@ impl TypeGrammar {
         }
 
         Self(result)
+    }
+
+    fn add_rule(&mut self, func: NestedFunctor, args: Vec<TypeNode>) {
+        todo!()
+    }
+
+    fn union_with(&mut self, other: TypeGrammar) {
+        todo!()
     }
 }
 
@@ -178,10 +185,19 @@ impl Cons<NemoFunctor> for StructuredType {
 
         let start = TypeNode::TypeNode {
             flat_types: FlatType::local_minimum(&config.flat_config),
-            principal_functors: HashSet::from([func]),
+            principal_functors: HashSet::from([func.clone()]),
         };
 
-        todo!()
+        let mut grammar = TypeGrammar::new();
+        let mut start_rule = Vec::new();
+
+        for subterm in subterms {
+            grammar.union_with(subterm.grammar);
+            start_rule.push(subterm.start);
+        }
+
+        grammar.add_rule(func, start_rule);
+        Some(Self { start, grammar })
     }
 }
 
