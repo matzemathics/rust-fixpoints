@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::{
     traits::{
@@ -42,7 +42,34 @@ impl TypeGrammar {
     }
 
     fn sub_grammar<'a>(&self, funcs: impl IntoIterator<Item = &'a NestedFunctor>) -> Self {
-        todo!()
+        let mut visit = Vec::from_iter(funcs);
+        let mut result = HashMap::new();
+
+        while let Some(current) = visit.pop() {
+            let Entry::Vacant(entry) = result.entry(current.clone()) else {
+                continue;
+            };
+
+            let rhs = self
+                .0
+                .get(current)
+                .expect("grammar contains description for all transitive functors");
+
+            entry.insert(rhs.clone());
+
+            for node in rhs {
+                let TypeNode::TypeNode {
+                    principal_functors, ..
+                } = node
+                else {
+                    continue;
+                };
+
+                visit.extend(principal_functors)
+            }
+        }
+
+        Self(result)
     }
 }
 
