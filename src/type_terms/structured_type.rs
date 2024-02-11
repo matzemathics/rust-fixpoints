@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     traits::{
-        lattice::{Bottom, LocalMinimum, Meet, PreOrder, Top, Union},
+        lattice::{Bottom, LocalMinimum, Meet, PreOrder, ThreeWayCompare, Top, Union},
         structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
     },
     type_inference::Program,
@@ -70,7 +70,7 @@ impl PartialOrd for TypeNode {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct TypeGrammar(HashMap<NestedFunctor, Vec<TypeNode>>);
 
 impl TypeGrammar {
@@ -154,6 +154,29 @@ impl TypeGrammar {
         for (func, args) in other.0 {
             self.add_rule(config, func, args)
         }
+    }
+}
+
+impl PartialOrd for TypeGrammar {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let mut comparison = ThreeWayCompare::init();
+        let keys: HashSet<_> = self.0.keys().chain(other.0.keys()).collect();
+
+        for key in keys {
+            let Some(left) = self.get(key) else {
+                continue;
+            };
+
+            let Some(right) = other.get(key) else {
+                continue;
+            };
+
+            for (l, r) in left.iter().zip(right) {
+                comparison = comparison.chain(l, r)?
+            }
+        }
+
+        Some(comparison.finish())
     }
 }
 

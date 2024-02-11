@@ -66,22 +66,22 @@ impl Bottom for bool {
     }
 }
 
-pub struct ThreeWayCompare(Option<Ordering>);
+pub struct ThreeWayCompare(Ordering);
 
 impl ThreeWayCompare {
     pub fn init() -> Self {
-        ThreeWayCompare(Some(Ordering::Equal))
+        ThreeWayCompare(Ordering::Equal)
     }
 
-    pub fn chain<T: PartialOrd>(self, left: &T, right: &T) -> Self {
-        Self(self.0.and_then(|inner| match inner {
-            Ordering::Less => left.le(right).then_some(Ordering::Less),
-            Ordering::Equal => left.partial_cmp(right),
-            Ordering::Greater => left.ge(right).then_some(Ordering::Greater),
-        }))
+    pub fn chain<T: PartialOrd>(self, left: &T, right: &T) -> Option<Self> {
+        match self.0 {
+            Ordering::Less => left.le(right).then_some(Self(Ordering::Less)),
+            Ordering::Equal => left.partial_cmp(right).map(Self),
+            Ordering::Greater => left.ge(right).then_some(Self(Ordering::Greater)),
+        }
     }
 
-    pub fn finish(self) -> Option<Ordering> {
+    pub fn finish(self) -> Ordering {
         self.0
     }
 }

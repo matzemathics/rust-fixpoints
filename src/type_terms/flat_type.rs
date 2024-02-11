@@ -18,9 +18,9 @@ macro_rules! prod_lattice {
 
         impl PartialOrd for $ty_id {
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                ThreeWayCompare::init()
-                    $(.chain(&self.$key, &other.$key))*
-                    .finish()
+                Some(ThreeWayCompare::init()
+                        $(.chain(&self.$key, &other.$key)?)*
+                        .finish())
             }
 
             fn le(&self, other: &Self) -> bool {
