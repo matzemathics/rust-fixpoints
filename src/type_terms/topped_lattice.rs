@@ -1,7 +1,7 @@
-use std::collections::HashSet;
 use std::hash::Hash;
+use std::{cmp::Ordering, collections::HashSet};
 
-use crate::traits::lattice::{Bottom, Meet, PreOrder, Top, Union};
+use crate::traits::lattice::{Bottom, Meet, Top, Union};
 
 #[derive(Debug, Clone)]
 pub struct ToppedLattice<T>(pub(super) Option<HashSet<T>>);
@@ -14,14 +14,23 @@ impl<T: Eq + Hash> PartialEq for ToppedLattice<T> {
 
 impl<T: Eq + Hash> Eq for ToppedLattice<T> {}
 
-impl<T: Eq + Hash> PreOrder for ToppedLattice<T> {
-    fn leq(&self, other: &Self) -> bool {
-        match &other.0 {
-            Some(other) => match &self.0 {
-                Some(this) => other.difference(this).next().is_none(),
-                None => false,
-            },
-            None => true,
+impl<T: Eq + Hash> PartialOrd for ToppedLattice<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (&self.0, &other.0) {
+            (None, None) => Some(Ordering::Equal),
+            (None, Some(_)) => Some(Ordering::Greater),
+            (Some(_), None) => Some(Ordering::Less),
+            (Some(left), Some(right)) => {
+                let ge = left.difference(&right).next().is_none();
+                let le = right.difference(&left).next().is_none();
+
+                match (ge, le) {
+                    (true, true) => Some(Ordering::Equal),
+                    (true, false) => Some(Ordering::Greater),
+                    (false, true) => Some(Ordering::Less),
+                    (false, false) => None,
+                }
+            }
         }
     }
 }

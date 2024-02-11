@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
-use crate::traits::lattice::{Bottom, Meet, PreOrder, Top, Union};
+use crate::traits::lattice::{Bottom, Meet, ThreeWayCompare, Top, Union};
 
 use super::{
     const_model::{IdentConstant, NemoFunctor},
@@ -16,9 +16,27 @@ macro_rules! prod_lattice {
             $($key: $key_ty,)*
         }
 
-        impl PreOrder for $ty_id {
-            fn leq(&self, other: &Self) -> bool {
-                $(self.$key.leq(&other.$key))&&*
+        impl PartialOrd for $ty_id {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                ThreeWayCompare::init()
+                    $(.chain(&self.$key, &other.$key))*
+                    .finish()
+            }
+
+            fn le(&self, other: &Self) -> bool {
+                $(self.$key <= other.$key)&&*
+            }
+
+            fn ge(&self, other: &Self) -> bool {
+                $(self.$key >= other.$key)&&*
+            }
+
+            fn lt(&self, other: &Self) -> bool {
+                $(self.$key < other.$key)&&*
+            }
+
+            fn gt(&self, other: &Self) -> bool {
+                $(self.$key > other.$key)&&*
             }
         }
 

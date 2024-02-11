@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::{hash_map, HashMap, HashSet},
     iter::repeat_with,
     vec,
@@ -24,13 +25,49 @@ pub struct StructuredType {
     grammar: TypeGrammar,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum TypeNode {
     Any,
     TypeNode {
         flat_types: FlatType,
         principal_functors: HashSet<NestedFunctor>,
     },
+}
+
+impl PartialOrd for TypeNode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (TypeNode::Any, TypeNode::Any) => Some(Ordering::Equal),
+            (TypeNode::Any, TypeNode::TypeNode { .. }) => Some(Ordering::Greater),
+            (TypeNode::TypeNode { .. }, TypeNode::Any) => Some(Ordering::Less),
+            (
+                TypeNode::TypeNode {
+                    flat_types,
+                    principal_functors,
+                },
+                TypeNode::TypeNode {
+                    flat_types: other_flat_types,
+                    principal_functors: other_principal_functors,
+                },
+            ) => {
+                let func_ge = principal_functors
+                    .difference(other_principal_functors)
+                    .next()
+                    .is_none();
+                let func_le = other_principal_functors
+                    .difference(principal_functors)
+                    .next()
+                    .is_none();
+
+                match (func_ge, func_le) {
+                    (true, true) => flat_types.partial_cmp(other_flat_types),
+                    (true, false) => flat_types.ge(other_flat_types).then_some(Ordering::Greater),
+                    (false, true) => flat_types.le(other_flat_types).then_some(Ordering::Less),
+                    (false, false) => None,
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

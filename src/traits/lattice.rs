@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 pub trait PreOrder {
     fn leq(&self, other: &Self) -> bool;
 }
@@ -61,5 +63,25 @@ impl Top for bool {
 impl Bottom for bool {
     fn bot() -> Self {
         false
+    }
+}
+
+pub struct ThreeWayCompare(Option<Ordering>);
+
+impl ThreeWayCompare {
+    pub fn init() -> Self {
+        ThreeWayCompare(Some(Ordering::Equal))
+    }
+
+    pub fn chain<T: PartialOrd>(self, left: &T, right: &T) -> Self {
+        Self(self.0.and_then(|inner| match inner {
+            Ordering::Less => left.le(right).then_some(Ordering::Less),
+            Ordering::Equal => left.partial_cmp(right),
+            Ordering::Greater => left.ge(right).then_some(Ordering::Greater),
+        }))
+    }
+
+    pub fn finish(self) -> Option<Ordering> {
+        self.0
     }
 }
