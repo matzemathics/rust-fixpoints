@@ -38,6 +38,7 @@ pub struct PatClause<Predicate, C: ConstModel> {
     pub body_variables: u16,
 }
 
+#[cfg(unused)]
 impl<P, C: ConstModel> PatClause<P, C> {
     pub(crate) fn head_ctors(&self) -> impl Iterator<Item = C::Constructor> {
         struct Dfs<Ctor> {

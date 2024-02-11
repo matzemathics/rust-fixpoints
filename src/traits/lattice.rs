@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 pub trait PreOrder {
     fn leq(&self, other: &Self) -> bool;
 }

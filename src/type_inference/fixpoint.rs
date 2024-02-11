@@ -7,7 +7,6 @@ use std::ops::Add;
 use std::ops::Mul;
 use std::ops::Sub;
 
-use crate::traits::lattice::Bottom;
 use crate::traits::lattice::LocalMinimum;
 use crate::traits::lattice::PreOrder;
 

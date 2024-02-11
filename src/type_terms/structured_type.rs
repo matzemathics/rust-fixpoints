@@ -262,7 +262,7 @@ impl TypeDomain for StructuredType {
 
     type Config = StructuredTypeConfig;
 
-    fn configure<P>(program: &Program<P, NemoModel>) -> StructuredTypeConfig {
+    fn configure<P>(_program: &Program<P, NemoModel>) -> StructuredTypeConfig {
         StructuredTypeConfig {}
     }
 }
