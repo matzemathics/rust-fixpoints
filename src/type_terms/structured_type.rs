@@ -481,6 +481,7 @@ mod test {
         };
 
         assert!(type_1 > type_2);
+        assert!(type_2 < type_1);
     }
 
     #[test]
@@ -529,5 +530,6 @@ mod test {
         };
 
         assert!(type_1 > type_2);
+        assert!(type_2 < type_1);
     }
 }
