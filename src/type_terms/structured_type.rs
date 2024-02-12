@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     traits::{
-        lattice::{Bottom, LocalMinimum, Meet, PreOrder, ThreeWayCompare, Top, Union},
+        lattice::{Bottom, LocalMinimum, Meet, ThreeWayCompare, Top, Union},
         structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
     },
     type_inference::Program,
@@ -19,7 +19,7 @@ use super::{
     flat_type::FlatType,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructuredType {
     start: TypeNode,
     grammar: TypeGrammar,
@@ -70,29 +70,57 @@ impl PartialOrd for TypeNode {
     }
 }
 
+impl Meet for TypeNode {
+    fn meet_with(&mut self, other: &Self) {
+        let TypeNode::TypeNode {
+            flat_types,
+            principal_functors,
+        } = self
+        else {
+            *self = other.clone();
+            return;
+        };
+
+        let TypeNode::TypeNode {
+            flat_types: other_flat_types,
+            principal_functors: other_functors,
+        } = other
+        else {
+            return;
+        };
+
+        flat_types.meet_with(other_flat_types);
+        principal_functors.retain(|f| other_functors.contains(f))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct TypeGrammar(HashMap<NestedFunctor, Vec<TypeNode>>);
+struct TypeGrammar {
+    rules: HashMap<NestedFunctor, Vec<TypeNode>>,
+}
 
 impl TypeGrammar {
     fn new() -> Self {
-        Self(HashMap::new())
+        Self {
+            rules: HashMap::new(),
+        }
     }
 
     fn get(&self, functor: &NestedFunctor) -> Option<&[TypeNode]> {
-        self.0.get(functor).map(Vec::as_slice)
+        self.rules.get(functor).map(Vec::as_slice)
     }
 
     fn sub_grammar<'a>(&self, funcs: impl IntoIterator<Item = &'a NestedFunctor>) -> Self {
         let mut visit = Vec::from_iter(funcs);
-        let mut result = HashMap::new();
+        let mut rules = HashMap::new();
 
         while let Some(current) = visit.pop() {
-            let hash_map::Entry::Vacant(entry) = result.entry(current.clone()) else {
+            let hash_map::Entry::Vacant(entry) = rules.entry(current.clone()) else {
                 continue;
             };
 
             let rhs = self
-                .0
+                .rules
                 .get(current)
                 .expect("grammar contains description for all transitive functors");
 
@@ -110,7 +138,7 @@ impl TypeGrammar {
             }
         }
 
-        Self(result)
+        Self { rules }
     }
 
     fn add_rule(
@@ -119,7 +147,7 @@ impl TypeGrammar {
         func: NestedFunctor,
         args: Vec<TypeNode>,
     ) {
-        let mut entry = match self.0.entry(func) {
+        let mut entry = match self.rules.entry(func) {
             hash_map::Entry::Vacant(entry) => {
                 entry.insert(args);
                 return;
@@ -151,16 +179,23 @@ impl TypeGrammar {
     }
 
     fn union_with(&mut self, config: &StructuredTypeConfig, other: TypeGrammar) {
-        for (func, args) in other.0 {
+        for (func, args) in other.rules {
             self.add_rule(config, func, args)
         }
+    }
+}
+
+impl Meet for TypeGrammar {
+    fn meet_with(&mut self, other: &Self) {
+        let keys: HashSet<_> = self.rules.keys().chain(other.rules.keys()).collect();
+        todo!()
     }
 }
 
 impl PartialOrd for TypeGrammar {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let mut comparison = ThreeWayCompare::init();
-        let keys: HashSet<_> = self.0.keys().chain(other.0.keys()).collect();
+        let keys: HashSet<_> = self.rules.keys().chain(other.rules.keys()).collect();
 
         for key in keys {
             let Some(left) = self.get(key) else {
@@ -183,9 +218,12 @@ impl PartialOrd for TypeGrammar {
 #[derive(Debug, Clone)]
 pub struct StructuredTypeConfig {}
 
-impl PreOrder for StructuredType {
-    fn leq(&self, other: &Self) -> bool {
-        todo!()
+impl PartialOrd for StructuredType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        ThreeWayCompare::init()
+            .chain(&self.start, &other.start)?
+            .chain(&self.grammar, &other.grammar)
+            .map(ThreeWayCompare::finish)
     }
 }
 
@@ -335,7 +373,7 @@ mod test {
     };
 
     use crate::{
-        traits::structural::Uncons,
+        traits::{lattice::Bottom, structural::Uncons},
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
             flat_type::FlatType,
@@ -358,10 +396,9 @@ mod test {
             principal_functors: HashSet::from([list_cons.clone()]),
         };
 
-        let list_grammar = TypeGrammar(HashMap::from([(
-            list_cons.clone(),
-            vec![TypeNode::Any, list_node.clone()],
-        )]));
+        let list_grammar = TypeGrammar {
+            rules: HashMap::from([(list_cons.clone(), vec![TypeNode::Any, list_node.clone()])]),
+        };
 
         let structured_type = StructuredType {
             start: list_node.clone(),
@@ -375,7 +412,7 @@ mod test {
 
         // check first value is top
         assert!(matches!(result[0].start, TypeNode::Any));
-        assert_eq!(result[0].grammar.0.len(), 0);
+        assert_eq!(result[0].grammar.rules.len(), 0);
 
         // check second value is list
         let TypeNode::TypeNode {
@@ -388,5 +425,61 @@ mod test {
 
         assert_eq!(principal_functors, &HashSet::from([list_cons]));
         assert_eq!(flat_types, &FlatType::from_constant(nil));
+    }
+
+    #[test]
+    fn tricky_grammar() {
+        // type_1: { f(any), g(foo) }
+        // type_2: { f(g(any)) }
+        // clearly type 1 > type 2
+
+        let f = NestedFunctor::List {
+            tag: Some("f".into()),
+            length: 1,
+        };
+
+        let g = NestedFunctor::List {
+            tag: Some("f".into()),
+            length: 1,
+        };
+
+        let foo = TypeNode::TypeNode {
+            flat_types: FlatType::bot(),
+            principal_functors: HashSet::from([NestedFunctor::List {
+                tag: Some("foo".into()),
+                length: 0,
+            }]),
+        };
+
+        let type_1 = StructuredType {
+            start: TypeNode::TypeNode {
+                flat_types: FlatType::bot(),
+                principal_functors: HashSet::from([f.clone(), g.clone()]),
+            },
+            grammar: TypeGrammar {
+                rules: HashMap::from([(f.clone(), vec![TypeNode::Any]), (g.clone(), vec![foo])]),
+            },
+        };
+
+        let type_2 = StructuredType {
+            start: TypeNode::TypeNode {
+                flat_types: FlatType::bot(),
+                principal_functors: HashSet::from([f.clone()]),
+            },
+            grammar: TypeGrammar {
+                rules: HashMap::from([
+                    (
+                        f.clone(),
+                        vec![TypeNode::TypeNode {
+                            flat_types: FlatType::bot(),
+                            principal_functors: HashSet::from([g.clone()]),
+                        }],
+                    ),
+                    (g.clone(), vec![TypeNode::Any]),
+                ]),
+            },
+        };
+
+        assert!(type_1 > type_2);
     }
 }
