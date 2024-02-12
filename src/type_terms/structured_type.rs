@@ -29,10 +29,41 @@ pub struct StructuredType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TypeNode {
     Any,
-    TypeNode {
-        flat_types: FlatType,
-        principal_functors: HashSet<NestedFunctor>,
-    },
+    TypeNode(OrNode),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OrNode {
+    flat_types: FlatType,
+    functors: HashSet<NestedFunctor>,
+}
+
+impl PartialOrd for OrNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let flat_ordering = self.flat_types.partial_cmp(&other.flat_types)?;
+
+        // a subset b <=> (a \\ b) == {}
+        let self_le = || self.functors.difference(&other.functors).next().is_none();
+        let self_ge = || other.functors.difference(&self.functors).next().is_none();
+
+        match flat_ordering {
+            Ordering::Less => self_le().then_some(Ordering::Less),
+            Ordering::Equal => match (self_le(), self_ge()) {
+                (true, true) => Some(Ordering::Equal),
+                (true, false) => Some(Ordering::Less),
+                (false, true) => Some(Ordering::Greater),
+                (false, false) => None,
+            },
+            Ordering::Greater => self_ge().then_some(Ordering::Greater),
+        }
+    }
+}
+
+impl Meet for OrNode {
+    fn meet_with(&mut self, other: &Self) {
+        self.flat_types.meet_with(&other.flat_types);
+        self.functors.retain(|f| other.functors.contains(f))
+    }
 }
 
 impl PartialOrd for TypeNode {
@@ -41,58 +72,24 @@ impl PartialOrd for TypeNode {
             (TypeNode::Any, TypeNode::Any) => Some(Ordering::Equal),
             (TypeNode::Any, TypeNode::TypeNode { .. }) => Some(Ordering::Greater),
             (TypeNode::TypeNode { .. }, TypeNode::Any) => Some(Ordering::Less),
-            (
-                TypeNode::TypeNode {
-                    flat_types,
-                    principal_functors,
-                },
-                TypeNode::TypeNode {
-                    flat_types: other_flat_types,
-                    principal_functors: other_principal_functors,
-                },
-            ) => {
-                // a subset b <=> (a \\ b) == {}
-                let func_le = principal_functors
-                    .difference(other_principal_functors)
-                    .next()
-                    .is_none();
-                let func_ge = other_principal_functors
-                    .difference(principal_functors)
-                    .next()
-                    .is_none();
-
-                match (func_ge, func_le) {
-                    (true, true) => flat_types.partial_cmp(other_flat_types),
-                    (true, false) => flat_types.ge(other_flat_types).then_some(Ordering::Greater),
-                    (false, true) => flat_types.le(other_flat_types).then_some(Ordering::Less),
-                    (false, false) => None,
-                }
-            }
+            (TypeNode::TypeNode(left), TypeNode::TypeNode(right)) => left.partial_cmp(right),
         }
     }
 }
 
 impl Meet for TypeNode {
     fn meet_with(&mut self, other: &Self) {
-        let TypeNode::TypeNode {
-            flat_types,
-            principal_functors,
-        } = self
-        else {
+        let TypeNode::TypeNode(inner) = self else {
             *self = other.clone();
             return;
         };
 
-        let TypeNode::TypeNode {
-            flat_types: other_flat_types,
-            principal_functors: other_functors,
-        } = other
-        else {
+        let TypeNode::TypeNode(other) = other else {
             return;
         };
 
-        flat_types.meet_with(other_flat_types);
-        principal_functors.retain(|f| other_functors.contains(f))
+        inner.flat_types.meet_with(&other.flat_types);
+        inner.functors.retain(|f| other.functors.contains(f))
     }
 }
 
@@ -100,9 +97,7 @@ impl TypeNode {
     fn functors(&self) -> Cow<'_, HashSet<NestedFunctor>> {
         match self {
             TypeNode::Any => Cow::Owned(HashSet::new()),
-            TypeNode::TypeNode {
-                principal_functors, ..
-            } => Cow::Borrowed(principal_functors),
+            TypeNode::TypeNode(OrNode { functors, .. }) => Cow::Borrowed(functors),
         }
     }
 }
@@ -140,14 +135,11 @@ impl TypeGrammar {
             entry.insert(rhs.clone());
 
             for node in rhs {
-                let TypeNode::TypeNode {
-                    principal_functors, ..
-                } = node
-                else {
+                let TypeNode::TypeNode(inner) = node else {
                     continue;
                 };
 
-                visit.extend(principal_functors)
+                visit.extend(&inner.functors)
             }
         }
 
@@ -169,25 +161,17 @@ impl TypeGrammar {
         };
 
         for (current, new) in entry.get_mut().iter_mut().zip(args) {
-            let TypeNode::TypeNode {
-                flat_types,
-                principal_functors,
-            } = current
-            else {
+            let TypeNode::TypeNode(inner) = current else {
                 continue;
             };
 
-            let TypeNode::TypeNode {
-                flat_types: new_flat_types,
-                principal_functors: new_functors,
-            } = new
-            else {
+            let TypeNode::TypeNode(new) = new else {
                 *current = TypeNode::Any;
                 continue;
             };
 
-            flat_types.union_with(&new_flat_types);
-            principal_functors.extend(new_functors);
+            inner.flat_types.union_with(&new.flat_types);
+            inner.functors.extend(new.functors);
         }
     }
 
@@ -203,7 +187,7 @@ pub struct StructuredTypeConfig {}
 
 impl PartialOrd for StructuredType {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let mut comparison = dbg!(ThreeWayCompare::init().chain(&self.start, &other.start))?;
+        let mut comparison = ThreeWayCompare::init().chain(&self.start, &other.start)?;
 
         let mut visit: Vec<_> = self
             .start
@@ -212,8 +196,6 @@ impl PartialOrd for StructuredType {
             .cloned()
             .collect();
         let mut visited = HashSet::new();
-
-        dbg!(&visit);
 
         while let Some(func) = visit.pop() {
             if !visited.insert(func.clone()) {
@@ -230,15 +212,13 @@ impl PartialOrd for StructuredType {
                 .expect("common functor in both types");
 
             for (left_node, right_node) in left.iter().zip(right) {
-                comparison = dbg!(comparison.chain(left_node, right_node))?;
+                comparison = comparison.chain(left_node, right_node)?;
 
                 let left_functors = left_node.functors();
                 let right_functors = right_node.functors();
                 visit.extend(left_functors.intersection(&right_functors).cloned())
             }
         }
-
-        dbg!(visited);
 
         Some(comparison.finish())
     }
@@ -267,11 +247,7 @@ impl InterpretBuiltin<NemoBuiltin> for StructuredType {
 
 impl Uncons<NemoFunctor> for StructuredType {
     fn uncons(&self, func: &NemoFunctor) -> Option<Vec<Self>> {
-        let TypeNode::TypeNode {
-            principal_functors,
-            flat_types,
-        } = &self.start
-        else {
+        let TypeNode::TypeNode(start) = &self.start else {
             return match func {
                 NemoFunctor::Double => Some(vec![]),
                 NemoFunctor::Const(_) => Some(vec![]),
@@ -282,11 +258,11 @@ impl Uncons<NemoFunctor> for StructuredType {
         };
 
         let NemoFunctor::Nested(nested) = func else {
-            let _ = flat_types.contains(func).then_some(())?;
+            let _ = start.flat_types.contains(func).then_some(())?;
             return Some(vec![]);
         };
 
-        if !principal_functors.contains(nested) {
+        if !start.functors.contains(nested) {
             return None;
         }
 
@@ -300,10 +276,8 @@ impl Uncons<NemoFunctor> for StructuredType {
             match subnode {
                 TypeNode::Any => result.push(Self::top()),
 
-                TypeNode::TypeNode {
-                    principal_functors, ..
-                } => {
-                    let grammar = self.grammar.sub_grammar(principal_functors);
+                TypeNode::TypeNode(OrNode { functors, .. }) => {
+                    let grammar = self.grammar.sub_grammar(functors);
                     let start = subnode.clone();
                     result.push(Self { start, grammar });
                 }
@@ -320,10 +294,10 @@ impl Cons<NemoFunctor> for StructuredType {
     fn cons(config: &Self::Config, ctor: NemoFunctor, subterms: Vec<Self>) -> Option<Self> {
         let NemoFunctor::Nested(func) = ctor else {
             let flat_types = FlatType::from_constant(ctor);
-            let start = TypeNode::TypeNode {
+            let start = TypeNode::TypeNode(OrNode {
                 flat_types,
-                principal_functors: HashSet::new(),
-            };
+                functors: HashSet::new(),
+            });
 
             return Some(Self {
                 start,
@@ -331,10 +305,10 @@ impl Cons<NemoFunctor> for StructuredType {
             });
         };
 
-        let start = TypeNode::TypeNode {
+        let start = TypeNode::TypeNode(OrNode {
             flat_types: FlatType::bot(),
-            principal_functors: HashSet::from([func.clone()]),
-        };
+            functors: HashSet::from([func.clone()]),
+        });
 
         let mut grammar = TypeGrammar::new();
         let mut start_rule = Vec::new();
@@ -363,10 +337,11 @@ impl Cons<NemoCtor> for StructuredType {
 
 impl LocalMinimum<StructuredTypeConfig> for StructuredType {
     fn local_minimum(_key: &StructuredTypeConfig) -> Self {
-        let start = TypeNode::TypeNode {
+        let start = TypeNode::TypeNode(OrNode {
             flat_types: FlatType::bot(),
-            principal_functors: HashSet::new(),
-        };
+            functors: HashSet::new(),
+        });
+
         let grammar = TypeGrammar::new();
         Self { start, grammar }
     }
@@ -394,6 +369,7 @@ mod test {
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
             flat_type::FlatType,
+            structured_type::OrNode,
         },
     };
 
@@ -408,10 +384,10 @@ mod test {
 
         let nil = NemoFunctor::Const(IdentConstant::IriConst("<nil>".into()));
 
-        let list_node = TypeNode::TypeNode {
+        let list_node = TypeNode::TypeNode(OrNode {
             flat_types: FlatType::from_constant(nil.clone()),
-            principal_functors: HashSet::from([list_cons.clone()]),
-        };
+            functors: HashSet::from([list_cons.clone()]),
+        });
 
         let list_grammar = TypeGrammar {
             rules: HashMap::from([(list_cons.clone(), vec![TypeNode::Any, list_node.clone()])]),
@@ -432,16 +408,12 @@ mod test {
         assert_eq!(result[0].grammar.rules.len(), 0);
 
         // check second value is list
-        let TypeNode::TypeNode {
-            flat_types,
-            principal_functors,
-        } = &result[1].start
-        else {
+        let TypeNode::TypeNode(inner) = &result[1].start else {
             panic!("unexpected: list[1] = any")
         };
 
-        assert_eq!(principal_functors, &HashSet::from([list_cons]));
-        assert_eq!(flat_types, &FlatType::from_constant(nil));
+        assert_eq!(&inner.functors, &HashSet::from([list_cons]));
+        assert_eq!(&inner.flat_types, &FlatType::from_constant(nil));
     }
 
     #[test]
@@ -460,37 +432,37 @@ mod test {
             length: 1,
         };
 
-        let foo = TypeNode::TypeNode {
+        let foo = TypeNode::TypeNode(OrNode {
             flat_types: FlatType::bot(),
-            principal_functors: HashSet::from([NestedFunctor::List {
+            functors: HashSet::from([NestedFunctor::List {
                 tag: Some("foo".into()),
                 length: 0,
             }]),
-        };
+        });
 
         let type_1 = StructuredType {
-            start: TypeNode::TypeNode {
+            start: TypeNode::TypeNode(OrNode {
                 flat_types: FlatType::bot(),
-                principal_functors: HashSet::from([f.clone(), g.clone()]),
-            },
+                functors: HashSet::from([f.clone(), g.clone()]),
+            }),
             grammar: TypeGrammar {
                 rules: HashMap::from([(f.clone(), vec![TypeNode::Any]), (g.clone(), vec![foo])]),
             },
         };
 
         let type_2 = StructuredType {
-            start: TypeNode::TypeNode {
+            start: TypeNode::TypeNode(OrNode {
                 flat_types: FlatType::bot(),
-                principal_functors: HashSet::from([f.clone()]),
-            },
+                functors: HashSet::from([f.clone()]),
+            }),
             grammar: TypeGrammar {
                 rules: HashMap::from([
                     (
                         f.clone(),
-                        vec![TypeNode::TypeNode {
+                        vec![TypeNode::TypeNode(OrNode {
                             flat_types: FlatType::bot(),
-                            principal_functors: HashSet::from([g.clone()]),
-                        }],
+                            functors: HashSet::from([g.clone()]),
+                        })],
                     ),
                     (g.clone(), vec![TypeNode::Any]),
                 ]),
@@ -518,28 +490,28 @@ mod test {
         };
 
         let type_1 = StructuredType {
-            start: TypeNode::TypeNode {
+            start: TypeNode::TypeNode(OrNode {
                 flat_types: FlatType::bot(),
-                principal_functors: HashSet::from([f.clone()]),
-            },
+                functors: HashSet::from([f.clone()]),
+            }),
             grammar: TypeGrammar {
                 rules: HashMap::from([(f.clone(), vec![TypeNode::Any])]),
             },
         };
 
         let type_2 = StructuredType {
-            start: TypeNode::TypeNode {
+            start: TypeNode::TypeNode(OrNode {
                 flat_types: FlatType::bot(),
-                principal_functors: HashSet::from([f.clone()]),
-            },
+                functors: HashSet::from([f.clone()]),
+            }),
             grammar: TypeGrammar {
                 rules: HashMap::from([
                     (
                         f.clone(),
-                        vec![TypeNode::TypeNode {
+                        vec![TypeNode::TypeNode(OrNode {
                             flat_types: FlatType::bot(),
-                            principal_functors: HashSet::from([g.clone()]),
-                        }],
+                            functors: HashSet::from([g.clone()]),
+                        })],
                     ),
                     (g.clone(), vec![TypeNode::Any]),
                 ]),
