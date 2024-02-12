@@ -428,7 +428,7 @@ mod test {
     }
 
     #[test]
-    fn tricky_grammar() {
+    fn tricky_grammar_1() {
         // type_1: { f(any), g(foo) }
         // type_2: { f(g(any)) }
         // clearly type 1 > type 2
@@ -439,7 +439,7 @@ mod test {
         };
 
         let g = NestedFunctor::List {
-            tag: Some("f".into()),
+            tag: Some("g".into()),
             length: 1,
         };
 
@@ -458,6 +458,54 @@ mod test {
             },
             grammar: TypeGrammar {
                 rules: HashMap::from([(f.clone(), vec![TypeNode::Any]), (g.clone(), vec![foo])]),
+            },
+        };
+
+        let type_2 = StructuredType {
+            start: TypeNode::TypeNode {
+                flat_types: FlatType::bot(),
+                principal_functors: HashSet::from([f.clone()]),
+            },
+            grammar: TypeGrammar {
+                rules: HashMap::from([
+                    (
+                        f.clone(),
+                        vec![TypeNode::TypeNode {
+                            flat_types: FlatType::bot(),
+                            principal_functors: HashSet::from([g.clone()]),
+                        }],
+                    ),
+                    (g.clone(), vec![TypeNode::Any]),
+                ]),
+            },
+        };
+
+        assert!(type_1 > type_2);
+    }
+
+    #[test]
+    fn tricky_grammar_2() {
+        // type_1: { f(any) }
+        // type_2: { f(g(any)) }
+        // clearly type 1 > type 2
+
+        let f = NestedFunctor::List {
+            tag: Some("f".into()),
+            length: 1,
+        };
+
+        let g = NestedFunctor::List {
+            tag: Some("g".into()),
+            length: 1,
+        };
+
+        let type_1 = StructuredType {
+            start: TypeNode::TypeNode {
+                flat_types: FlatType::bot(),
+                principal_functors: HashSet::from([f.clone()]),
+            },
+            grammar: TypeGrammar {
+                rules: HashMap::from([(f.clone(), vec![TypeNode::Any])]),
             },
         };
 
