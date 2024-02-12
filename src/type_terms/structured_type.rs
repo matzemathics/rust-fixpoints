@@ -1,6 +1,7 @@
 use std::{
+    borrow::Cow,
     cmp::Ordering,
-    collections::{hash_map, HashMap, HashSet},
+    collections::{btree_set::Intersection, hash_map, HashMap, HashSet},
     iter::repeat_with,
     vec,
 };
@@ -50,11 +51,12 @@ impl PartialOrd for TypeNode {
                     principal_functors: other_principal_functors,
                 },
             ) => {
-                let func_ge = principal_functors
+                // a subset b <=> (a \\ b) == {}
+                let func_le = principal_functors
                     .difference(other_principal_functors)
                     .next()
                     .is_none();
-                let func_le = other_principal_functors
+                let func_ge = other_principal_functors
                     .difference(principal_functors)
                     .next()
                     .is_none();
@@ -91,6 +93,17 @@ impl Meet for TypeNode {
 
         flat_types.meet_with(other_flat_types);
         principal_functors.retain(|f| other_functors.contains(f))
+    }
+}
+
+impl TypeNode {
+    fn functors(&self) -> Cow<'_, HashSet<NestedFunctor>> {
+        match self {
+            TypeNode::Any => Cow::Owned(HashSet::new()),
+            TypeNode::TypeNode {
+                principal_functors, ..
+            } => Cow::Borrowed(principal_functors),
+        }
     }
 }
 
@@ -185,45 +198,49 @@ impl TypeGrammar {
     }
 }
 
-impl Meet for TypeGrammar {
-    fn meet_with(&mut self, other: &Self) {
-        let keys: HashSet<_> = self.rules.keys().chain(other.rules.keys()).collect();
-        todo!()
-    }
-}
-
-impl PartialOrd for TypeGrammar {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let mut comparison = ThreeWayCompare::init();
-        let keys: HashSet<_> = self.rules.keys().chain(other.rules.keys()).collect();
-
-        for key in keys {
-            let Some(left) = self.get(key) else {
-                continue;
-            };
-
-            let Some(right) = other.get(key) else {
-                continue;
-            };
-
-            for (l, r) in left.iter().zip(right) {
-                comparison = comparison.chain(l, r)?
-            }
-        }
-
-        Some(comparison.finish())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct StructuredTypeConfig {}
 
 impl PartialOrd for StructuredType {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        ThreeWayCompare::init()
-            .chain(&self.start, &other.start)?
-            .chain(&self.grammar, &other.grammar)
-            .map(ThreeWayCompare::finish)
+        let mut comparison = dbg!(ThreeWayCompare::init().chain(&self.start, &other.start))?;
+
+        let mut visit: Vec<_> = self
+            .start
+            .functors()
+            .intersection(&other.start.functors())
+            .cloned()
+            .collect();
+        let mut visited = HashSet::new();
+
+        dbg!(&visit);
+
+        while let Some(func) = visit.pop() {
+            if !visited.insert(func.clone()) {
+                continue;
+            }
+
+            let left = self
+                .grammar
+                .get(&func)
+                .expect("common functor in both types");
+            let right = other
+                .grammar
+                .get(&func)
+                .expect("common functor in both types");
+
+            for (left_node, right_node) in left.iter().zip(right) {
+                comparison = dbg!(comparison.chain(left_node, right_node))?;
+
+                let left_functors = left_node.functors();
+                let right_functors = right_node.functors();
+                visit.extend(left_functors.intersection(&right_functors).cloned())
+            }
+        }
+
+        dbg!(visited);
+
+        Some(comparison.finish())
     }
 }
 

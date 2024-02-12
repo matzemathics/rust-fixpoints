@@ -66,6 +66,7 @@ impl Bottom for bool {
     }
 }
 
+#[derive(Debug)]
 pub struct ThreeWayCompare(Ordering);
 
 impl ThreeWayCompare {
