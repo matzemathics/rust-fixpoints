@@ -365,7 +365,10 @@ mod test {
     };
 
     use crate::{
-        traits::{lattice::Bottom, structural::Uncons},
+        traits::{
+            lattice::{Bottom, Meet},
+            structural::Uncons,
+        },
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
             flat_type::FlatType,
@@ -375,13 +378,26 @@ mod test {
 
     use super::{StructuredType, TypeGrammar, TypeNode};
 
+    fn functor(name: &str, len: usize) -> NestedFunctor {
+        NestedFunctor::List {
+            tag: Some(name.into()),
+            length: len,
+        }
+    }
+
+    fn functor_node<T>(t: T) -> TypeNode
+    where
+        HashSet<NestedFunctor>: From<T>,
+    {
+        TypeNode::TypeNode(OrNode {
+            flat_types: FlatType::bot(),
+            functors: HashSet::from(t),
+        })
+    }
+
     #[test]
     fn uncons_list() {
-        let list_cons = NestedFunctor::List {
-            tag: Some("::".into()),
-            length: 2,
-        };
-
+        let list_cons = functor("::", 2);
         let nil = NemoFunctor::Const(IdentConstant::IriConst("<nil>".into()));
 
         let list_node = TypeNode::TypeNode(OrNode {
@@ -420,31 +436,15 @@ mod test {
     fn tricky_grammar_1() {
         // type_1: { f(any), g(foo) }
         // type_2: { f(g(any)) }
-        // clearly type 1 > type 2
+        // => type 1 > type 2
 
-        let f = NestedFunctor::List {
-            tag: Some("f".into()),
-            length: 1,
-        };
+        let f = functor("f", 1);
+        let g = functor("g", 1);
 
-        let g = NestedFunctor::List {
-            tag: Some("g".into()),
-            length: 1,
-        };
+        let foo = functor_node([functor("foo", 0)]);
 
-        let foo = TypeNode::TypeNode(OrNode {
-            flat_types: FlatType::bot(),
-            functors: HashSet::from([NestedFunctor::List {
-                tag: Some("foo".into()),
-                length: 0,
-            }]),
-        });
-
-        let type_1 = StructuredType {
-            start: TypeNode::TypeNode(OrNode {
-                flat_types: FlatType::bot(),
-                functors: HashSet::from([f.clone(), g.clone()]),
-            }),
+        let mut type_1 = StructuredType {
+            start: functor_node([f.clone(), g.clone()]),
             grammar: TypeGrammar {
                 rules: HashMap::from([(f.clone(), vec![TypeNode::Any]), (g.clone(), vec![foo])]),
             },
@@ -457,13 +457,7 @@ mod test {
             }),
             grammar: TypeGrammar {
                 rules: HashMap::from([
-                    (
-                        f.clone(),
-                        vec![TypeNode::TypeNode(OrNode {
-                            flat_types: FlatType::bot(),
-                            functors: HashSet::from([g.clone()]),
-                        })],
-                    ),
+                    (f.clone(), vec![functor_node([g.clone()])]),
                     (g.clone(), vec![TypeNode::Any]),
                 ]),
             },
@@ -471,48 +465,31 @@ mod test {
 
         assert!(type_1 > type_2);
         assert!(type_2 < type_1);
+        type_1.meet_with(&type_2);
+        assert_eq!(type_1, type_2);
     }
 
     #[test]
     fn tricky_grammar_2() {
         // type_1: { f(any) }
         // type_2: { f(g(any)) }
-        // clearly type 1 > type 2
+        // => type 1 > type 2
 
-        let f = NestedFunctor::List {
-            tag: Some("f".into()),
-            length: 1,
-        };
+        let f = functor("f", 1);
+        let g = functor("g", 1);
 
-        let g = NestedFunctor::List {
-            tag: Some("g".into()),
-            length: 1,
-        };
-
-        let type_1 = StructuredType {
-            start: TypeNode::TypeNode(OrNode {
-                flat_types: FlatType::bot(),
-                functors: HashSet::from([f.clone()]),
-            }),
+        let mut type_1 = StructuredType {
+            start: functor_node([f.clone()]),
             grammar: TypeGrammar {
                 rules: HashMap::from([(f.clone(), vec![TypeNode::Any])]),
             },
         };
 
         let type_2 = StructuredType {
-            start: TypeNode::TypeNode(OrNode {
-                flat_types: FlatType::bot(),
-                functors: HashSet::from([f.clone()]),
-            }),
+            start: functor_node([f.clone()]),
             grammar: TypeGrammar {
                 rules: HashMap::from([
-                    (
-                        f.clone(),
-                        vec![TypeNode::TypeNode(OrNode {
-                            flat_types: FlatType::bot(),
-                            functors: HashSet::from([g.clone()]),
-                        })],
-                    ),
+                    (f.clone(), vec![functor_node([g.clone()])]),
                     (g.clone(), vec![TypeNode::Any]),
                 ]),
             },
@@ -520,5 +497,12 @@ mod test {
 
         assert!(type_1 > type_2);
         assert!(type_2 < type_1);
+        type_1.meet_with(&type_2);
+        assert_eq!(type_1, type_2);
+    }
+
+    fn meet_2() {
+        // a(f(int)) + b(*) meet a(*) + b(f(str)) -> a(f(int, str)) | b(f(int, str))
+        todo!()
     }
 }
