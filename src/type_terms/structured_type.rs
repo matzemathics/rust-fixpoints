@@ -146,12 +146,7 @@ impl TypeGrammar {
         Self { rules }
     }
 
-    fn add_rule(
-        &mut self,
-        _config: &StructuredTypeConfig,
-        func: NestedFunctor,
-        args: Vec<TypeNode>,
-    ) {
+    fn add_rule(&mut self, func: NestedFunctor, args: Vec<TypeNode>) {
         let mut entry = match self.rules.entry(func) {
             hash_map::Entry::Vacant(entry) => {
                 entry.insert(args);
@@ -175,9 +170,9 @@ impl TypeGrammar {
         }
     }
 
-    fn union_with(&mut self, config: &StructuredTypeConfig, other: TypeGrammar) {
+    fn union_with(&mut self, other: TypeGrammar) {
         for (func, args) in other.rules {
-            self.add_rule(config, func, args)
+            self.add_rule(func, args)
         }
     }
 }
@@ -226,7 +221,59 @@ impl PartialOrd for StructuredType {
 
 impl Meet for StructuredType {
     fn meet_with(&mut self, other: &Self) {
-        todo!()
+        let mut rules = HashMap::new();
+        let mut discovered_left = HashSet::new();
+        let mut discovered_right = HashSet::new();
+        let mut visit: Vec<NestedFunctor> = Vec::new();
+
+        let mut visit_nodes = |left: &mut TypeNode, right: &TypeNode| {
+            let mut res: Option<Vec<_>> = None;
+            if matches!(left, TypeNode::Any) {
+                discovered_right.extend(right.functors().iter().cloned());
+            } else if matches!(right, TypeNode::Any) {
+                discovered_left.extend(left.functors().iter().cloned());
+            } else {
+                res = Some(
+                    left.functors()
+                        .intersection(&right.functors())
+                        .cloned()
+                        .collect(),
+                );
+            }
+            left.meet_with(&right);
+            res.into_iter().flatten()
+        };
+
+        visit.extend(visit_nodes(&mut self.start, &other.start));
+
+        while let Some(next) = visit.pop() {
+            let hash_map::Entry::Vacant(entry) = rules.entry(next.clone()) else {
+                continue;
+            };
+
+            let left = self.grammar.get(&next).unwrap();
+            let right = other.grammar.get(&next).unwrap();
+            let mut result = Vec::with_capacity(left.len());
+
+            for (left_node, right_node) in left.iter().zip(right) {
+                let mut res_node = left_node.clone();
+                visit.extend(visit_nodes(&mut res_node, right_node));
+                result.push(res_node);
+            }
+
+            entry.insert(result);
+        }
+
+        let mut left_grammar = TypeGrammar::new();
+        left_grammar.union_with(self.grammar.sub_grammar(&discovered_left));
+        left_grammar.union_with(other.grammar.sub_grammar(&discovered_right));
+        for (f, node) in left_grammar.rules {
+            if let hash_map::Entry::Vacant(entry) = rules.entry(f) {
+                entry.insert(node);
+            }
+        }
+
+        self.grammar = TypeGrammar { rules };
     }
 }
 
@@ -291,7 +338,7 @@ impl Uncons<NemoFunctor> for StructuredType {
 impl Cons<NemoFunctor> for StructuredType {
     type Config = StructuredTypeConfig;
 
-    fn cons(config: &Self::Config, ctor: NemoFunctor, subterms: Vec<Self>) -> Option<Self> {
+    fn cons(_config: &Self::Config, ctor: NemoFunctor, subterms: Vec<Self>) -> Option<Self> {
         let NemoFunctor::Nested(func) = ctor else {
             let flat_types = FlatType::from_constant(ctor);
             let start = TypeNode::TypeNode(OrNode {
@@ -314,11 +361,11 @@ impl Cons<NemoFunctor> for StructuredType {
         let mut start_rule = Vec::new();
 
         for subterm in subterms {
-            grammar.union_with(config, subterm.grammar);
+            grammar.union_with(subterm.grammar);
             start_rule.push(subterm.start);
         }
 
-        grammar.add_rule(config, func, start_rule);
+        grammar.add_rule(func, start_rule);
         Some(Self { start, grammar })
     }
 }
@@ -366,7 +413,7 @@ mod test {
 
     use crate::{
         traits::{
-            lattice::{Bottom, Meet},
+            lattice::{Bottom, Meet, Union},
             structural::Uncons,
         },
         type_terms::{
@@ -392,6 +439,18 @@ mod test {
         TypeNode::TypeNode(OrNode {
             flat_types: FlatType::bot(),
             functors: HashSet::from(t),
+        })
+    }
+
+    fn flat_node(f: impl IntoIterator<Item = FlatType>) -> TypeNode {
+        let flat_types = f.into_iter().fold(FlatType::bot(), |mut current, new| {
+            current.union_with(&new);
+            current
+        });
+
+        TypeNode::TypeNode(OrNode {
+            flat_types,
+            functors: HashSet::new(),
         })
     }
 
@@ -501,8 +560,50 @@ mod test {
         assert_eq!(type_1, type_2);
     }
 
+    #[test]
     fn meet_2() {
-        // a(f(int)) + b(*) meet a(*) + b(f(str)) -> a(f(int, str)) | b(f(int, str))
-        todo!()
+        // {a(f(int)) + b(*)} `meet` {a(*) + b(f(str))} -> a(f(int, str)) | b(f(int, str))
+
+        // type_1 = {a(f(int)) + b(*)}
+        let mut type_1 = StructuredType {
+            start: functor_node([functor("a", 1), functor("b", 1)]),
+            grammar: TypeGrammar {
+                rules: HashMap::from([
+                    (functor("a", 1), vec![functor_node([functor("f", 1)])]),
+                    (functor("f", 1), vec![flat_node([FlatType::int()])]),
+                    (functor("b", 1), vec![TypeNode::Any]),
+                ]),
+            },
+        };
+
+        // type_2 = {a(*) + b(f(str))}
+        let type_2 = StructuredType {
+            start: functor_node([functor("a", 1), functor("b", 1)]),
+            grammar: TypeGrammar {
+                rules: HashMap::from([
+                    (functor("b", 1), vec![functor_node([functor("f", 1)])]),
+                    (functor("f", 1), vec![flat_node([FlatType::str()])]),
+                    (functor("a", 1), vec![TypeNode::Any]),
+                ]),
+            },
+        };
+
+        // expected = a(f(int, str)) | b(f(int, str))
+        let expected = StructuredType {
+            start: functor_node([functor("a", 1), functor("b", 1)]),
+            grammar: TypeGrammar {
+                rules: HashMap::from([
+                    (functor("a", 1), vec![functor_node([functor("f", 1)])]),
+                    (functor("b", 1), vec![functor_node([functor("f", 1)])]),
+                    (
+                        functor("f", 1),
+                        vec![flat_node([FlatType::str(), FlatType::int()])],
+                    ),
+                ]),
+            },
+        };
+
+        type_1.meet_with(&type_2);
+        assert_eq!(type_1, expected);
     }
 }

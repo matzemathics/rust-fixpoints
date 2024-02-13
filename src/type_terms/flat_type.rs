@@ -163,4 +163,16 @@ impl FlatType {
 
         result
     }
+
+    pub(crate) fn int() -> Self {
+        let mut res = Self::bot();
+        res.integer = IntType::top();
+        res
+    }
+
+    pub(crate) fn str() -> Self {
+        let mut res = Self::bot();
+        res.string = ToppedLattice::top();
+        res
+    }
 }
