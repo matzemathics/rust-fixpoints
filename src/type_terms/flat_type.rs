@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, sync::Arc};
+use std::{cmp::Ordering, fmt::Debug, sync::Arc};
 
 use crate::traits::lattice::{Bottom, Meet, ThreeWayCompare, Top, Union};
 
@@ -11,9 +11,23 @@ macro_rules! prod_lattice {
     {
         $vis:vis struct $ty_id:ident { $($key:ident: $key_ty:ty,)* }
     } => {
-        #[derive(Debug, Clone, PartialEq, Eq)]
+        #[derive(Clone, PartialEq, Eq)]
         $vis struct $ty_id {
             $($key: $key_ty,)*
+        }
+
+        impl Debug for $ty_id {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let mut debugger = f.debug_struct(stringify!($ty_id));
+
+                $(
+                    if self.$key != <$key_ty>::bot() {
+                        debugger.field(stringify!($key), &self.$key);
+                    }
+                )*
+
+                debugger.finish()
+            }
         }
 
         impl PartialOrd for $ty_id {

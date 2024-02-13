@@ -1,10 +1,20 @@
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::{cmp::Ordering, collections::HashSet};
 
 use crate::traits::lattice::{Bottom, Meet, Top, Union};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ToppedLattice<T>(pub(super) Option<HashSet<T>>);
+
+impl<T: Debug> Debug for ToppedLattice<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            Some(set) => set.fmt(f),
+            None => f.write_str("*"),
+        }
+    }
+}
 
 impl<T: Eq + Hash> PartialEq for ToppedLattice<T> {
     fn eq(&self, other: &Self) -> bool {
