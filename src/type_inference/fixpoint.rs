@@ -34,10 +34,10 @@ where
         debug_assert!(self.0.contains_key(k));
         let entry = self.0.get_mut(k).unwrap();
         if v.leq(entry) {
-            true
+            false
         } else {
             *entry = v;
-            false
+            true
         }
     }
 }
@@ -139,7 +139,7 @@ impl<T, R> Default for FixComputation<T, R> {
 impl<T, R> FixComputation<T, R>
 where
     T: Hash + Eq + Clone + Debug,
-    R: PreOrder + Clone + LocalMinimum<T>,
+    R: PreOrder + Clone + LocalMinimum<T> + Debug,
 {
     pub(crate) fn repeat_computation(
         &mut self,
@@ -189,7 +189,7 @@ struct FixRecursor<'a, T, R, Tau> {
 impl<'a, T, R, Tau> Recursor<T, R> for FixRecursor<'a, T, R, Tau>
 where
     T: Hash + Eq + Clone + Debug,
-    R: PreOrder + Clone + LocalMinimum<T>,
+    R: PreOrder + Clone + LocalMinimum<T> + Debug,
     Tau: MonotoneTransform<T, Output = R>,
 {
     fn recurse(&mut self, arg: T) -> &R {
@@ -208,7 +208,7 @@ pub fn compute_fixpoint<T, R>(
 ) -> PartialTable<T, R>
 where
     T: PreOrder + Eq + Hash + Debug + Clone,
-    R: PreOrder + Clone + LocalMinimum<T>,
+    R: PreOrder + Clone + LocalMinimum<T> + Debug,
 {
     let mut data: FixComputation<T, R> = FixComputation::default();
     data.repeat_computation(&alpha, &tau);
