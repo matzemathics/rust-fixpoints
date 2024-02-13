@@ -31,8 +31,9 @@ impl<T: Eq + Hash> PartialOrd for ToppedLattice<T> {
             (None, Some(_)) => Some(Ordering::Greater),
             (Some(_), None) => Some(Ordering::Less),
             (Some(left), Some(right)) => {
-                let ge = left.difference(&right).next().is_none();
-                let le = right.difference(&left).next().is_none();
+                // a subset b <=> a \\ b == {}
+                let le = left.difference(&right).next().is_none();
+                let ge = right.difference(&left).next().is_none();
 
                 match (ge, le) {
                     (true, true) => Some(Ordering::Equal),
