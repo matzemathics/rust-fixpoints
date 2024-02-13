@@ -63,5 +63,5 @@ fn main() {
     );
 
     let pt = compute_fixpoint(("q", 2), program.analyse::<StructuredType>());
-    println!("{pt:#?}");
+    println!("{pt:?}");
 }

@@ -1,7 +1,8 @@
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::{btree_set::Intersection, hash_map, HashMap, HashSet},
+    collections::{hash_map, HashMap, HashSet},
+    fmt::Debug,
     iter::repeat_with,
     vec,
 };
@@ -26,16 +27,34 @@ pub struct StructuredType {
     grammar: TypeGrammar,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum TypeNode {
     Any,
     TypeNode(OrNode),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for TypeNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Any => write!(f, "Any"),
+            Self::TypeNode(arg0) => write!(f, "{:?}", arg0),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 struct OrNode {
     flat_types: FlatType,
     functors: HashSet<NestedFunctor>,
+}
+
+impl Debug for OrNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set()
+            .entry(&self.flat_types)
+            .entries(&self.functors)
+            .finish()
+    }
 }
 
 impl PartialOrd for OrNode {
@@ -102,9 +121,21 @@ impl TypeNode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct TypeGrammar {
     rules: HashMap<NestedFunctor, Vec<TypeNode>>,
+}
+
+impl Debug for TypeGrammar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+
+        for (key, value) in &self.rules {
+            write!(f, "{key:?} => {value:?}, ")?;
+        }
+
+        write!(f, "}}")
+    }
 }
 
 impl TypeGrammar {
