@@ -299,10 +299,18 @@ impl Meet for StructuredType {
         left_grammar.union_with(self.grammar.sub_grammar(&discovered_left));
         left_grammar.union_with(other.grammar.sub_grammar(&discovered_right));
         for (f, node) in left_grammar.rules {
-            if let hash_map::Entry::Vacant(entry) = rules.entry(f) {
-                entry.insert(node);
-            }
+            rules.insert(dbg!(f), node);
         }
+
+        let mut rhs_functors: HashSet<_> = rules
+            .values()
+            .flatten()
+            .flat_map(|n| n.functors().into_owned())
+            .collect();
+
+        rhs_functors.extend(self.start.functors().into_owned());
+
+        rules.retain(|f, _| rhs_functors.contains(f));
 
         self.grammar = TypeGrammar { rules };
     }
@@ -587,6 +595,47 @@ mod test {
 
         assert!(type_1 > type_2);
         assert!(type_2 < type_1);
+        type_1.meet_with(&type_2);
+        assert_eq!(type_1, type_2);
+    }
+
+    #[test]
+    fn tricky_grammar_3() {
+        // type_1: { f(any), g(foo) }
+        // type_2: { f(g(any)), g(any) }
+        // => type 1 > type 2
+
+        let f = functor("f", 1);
+        let g = functor("g", 1);
+
+        let foo = functor_node([functor("foo", 0)]);
+
+        let mut type_1 = StructuredType {
+            start: functor_node([f.clone(), g.clone()]),
+            grammar: TypeGrammar {
+                rules: HashMap::from([
+                    (f.clone(), vec![TypeNode::Any]),
+                    (g.clone(), vec![foo]),
+                    (functor("foo", 0), vec![]),
+                ]),
+            },
+        };
+
+        let type_2 = StructuredType {
+            start: TypeNode::TypeNode(OrNode {
+                flat_types: FlatType::bot(),
+                functors: HashSet::from([f.clone(), g.clone()]),
+            }),
+            grammar: TypeGrammar {
+                rules: HashMap::from([
+                    (f.clone(), vec![functor_node([g.clone()])]),
+                    (g.clone(), vec![TypeNode::Any]),
+                ]),
+            },
+        };
+
+        assert!(!(type_1 > type_2));
+        assert!(!(type_2 < type_1));
         type_1.meet_with(&type_2);
         assert_eq!(type_1, type_2);
     }
