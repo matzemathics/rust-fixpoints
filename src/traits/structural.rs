@@ -38,6 +38,7 @@ pub trait TypeDomain:
     + Top
     + Meet
     + Clone
+    + PartialOrd
 {
     type Model: ConstModel;
     type Config;

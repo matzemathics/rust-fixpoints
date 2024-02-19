@@ -60,29 +60,33 @@ impl<T> TypeTable<T> {
 }
 
 impl<T: Clone> TypeTable<T> {
-    fn add_row(&mut self, new_row: Tup<T>)
+    fn add_row(&mut self, mut new_row: Tup<T>)
     where
-        T: PreOrder,
+        T: PartialOrd,
     {
-        for row in &mut self.rows {
-            if new_row.leq(&row) {
-                return;
-            }
+        loop {
+            let mut changed = false;
+            self.rows.retain(|row| {
+                if new_row.try_union_with(row) {
+                    changed = true;
+                    false
+                } else {
+                    true
+                }
+            });
 
-            if row.leq(&new_row) {
-                *row = new_row;
-                return;
+            if !changed {
+                break;
             }
         }
 
-        // new_row is incomparable to all current rows
         self.rows.push(new_row)
     }
 
     // updates self = self union other
     pub(super) fn union_with(&mut self, other: Self)
     where
-        T: PreOrder,
+        T: PartialOrd,
     {
         if self.rows.len() == 0 {
             *self = other.clone();
@@ -101,7 +105,7 @@ impl<T: Clone> TypeTable<T> {
     // this might increase the number of rows quadratically
     pub(super) fn meet<F>(&self, other: &Self, positions: &[BodyTerm<F>]) -> Self
     where
-        T: Uncons<F> + Meet,
+        T: Uncons<F> + Meet + PartialOrd,
     {
         let mut result = Self {
             rows: Vec::default(),

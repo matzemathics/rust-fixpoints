@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, cmp::Ordering};
 
 use crate::{
     traits::{
@@ -39,6 +39,28 @@ impl<T: Clone> Tup<T> {
                     stack.extend(subterms.iter().zip(sub.into_iter().map(Cow::Owned)))
                 }
                 BodyTerm::DontCare => {}
+            }
+        }
+
+        true
+    }
+
+    pub(super) fn try_union_with(&mut self, other: &Self) -> bool
+    where
+        T: PartialOrd,
+    {
+        let Some(cmp) = self
+            .iter()
+            .zip(other.iter())
+            .map(|(l, r)| l.partial_cmp(r))
+            .collect::<Option<Box<_>>>()
+        else {
+            return false;
+        };
+
+        for (index, ordering) in cmp.into_iter().enumerate() {
+            if matches!(ordering, Ordering::Less) {
+                self[index] = other[index].clone();
             }
         }
 
