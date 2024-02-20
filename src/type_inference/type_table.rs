@@ -152,13 +152,20 @@ impl<T> TypeTable<T> {
     ) where
         F: Clone,
         Builtin: Clone,
-        T: Clone + Top + Cons<F> + Uncons<F> + InterpretBuiltin<Builtin> + Meet,
+        T: Clone + Top + Cons<F> + Uncons<F> + InterpretBuiltin<Builtin> + Meet + PartialOrd,
     {
-        self.rows.retain_mut(|row| {
-            row.interpret_body_atom(config, shape)
+        let rows = std::mem::take(&mut self.rows);
+        for mut row in rows {
+            let Some(assignment) = row
+                .interpret_body_atom(config, shape)
                 .and_then(|tup| T::interpret(builtin.clone(), tup))
-                .and_then(|assignment| row.unify_with(&assignment, shape).then_some(()))
-                .is_some()
-        })
+            else {
+                continue;
+            };
+
+            if row.unify_with(&assignment, shape) {
+                self.add_row(row)
+            }
+        }
     }
 }
