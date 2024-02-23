@@ -1,7 +1,5 @@
 use std::{fmt::Debug, sync::Arc};
 
-use crate::traits::structural::ConstModel;
-
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum NemoFunctor {
     Double,
@@ -59,6 +57,12 @@ pub enum NemoCtor {
     Functor(NemoFunctor),
 }
 
+impl From<NemoFunctor> for NemoCtor {
+    fn from(value: NemoFunctor) -> Self {
+        NemoCtor::Functor(value)
+    }
+}
+
 pub type IntConst = i64;
 pub type StrConst = Arc<str>;
 pub type IriConst = Arc<str>;
@@ -68,11 +72,3 @@ pub type TermTag = Arc<str>;
 
 #[derive(Clone)]
 pub enum NemoBuiltin {}
-
-pub struct NemoModel;
-
-impl ConstModel for NemoModel {
-    type Constructor = NemoCtor;
-    type Functor = NemoFunctor;
-    type Builtin = NemoBuiltin;
-}

@@ -1,12 +1,6 @@
-use std::{borrow::Cow, cmp::Ordering, collections::btree_set::Union};
+use std::{borrow::Cow, cmp::Ordering};
 
-use crate::{
-    traits::{
-        lattice::{Meet, Top},
-        structural::{Cons, Uncons},
-    },
-    util::tup::Tup,
-};
+use crate::{traits::structural::TypeDomain, util::tup::Tup};
 
 use super::model::{BodyTerm, HeadTerm};
 
@@ -22,16 +16,16 @@ pub(super) enum UnionResult {
 }
 
 impl<T: Clone> Tup<T> {
-    pub(super) fn unify<F>(mut self, other: &Self, positions: &[BodyTerm<F>]) -> Option<Self>
+    pub(super) fn unify(mut self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> Option<Self>
     where
-        T: Meet + Uncons<F>,
+        T: TypeDomain,
     {
         self.unify_with(other, positions).then_some(self)
     }
 
-    pub(super) fn unify_with<F>(&mut self, other: &Self, positions: &[BodyTerm<F>]) -> bool
+    pub(super) fn unify_with(&mut self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> bool
     where
-        T: Meet + Uncons<F>,
+        T: TypeDomain,
     {
         debug_assert_eq!(other.len(), positions.len());
         let mut stack: Vec<_> = positions
@@ -95,12 +89,9 @@ impl<T: Clone> Tup<T> {
     }
 }
 
-impl<T: Clone> Tup<T> {
-    fn interpret_head_term<C>(&self, config: &T::Config, t: &HeadTerm<C>) -> Option<T>
-    where
-        C: Clone,
-        T: Cons<C>,
-    {
+impl<T: TypeDomain> Tup<T> {
+    fn interpret_head_term(&self, config: &T::Config, t: &HeadTerm<T::Constructor>) -> Option<T>
+where {
         match t {
             HeadTerm::Var(v) => Some(self[*v as usize].clone()),
             HeadTerm::Ctor(c, subterms) => {
@@ -113,25 +104,18 @@ impl<T: Clone> Tup<T> {
         }
     }
 
-    pub(super) fn interpret_head_atom<C: Clone>(
+    pub(super) fn interpret_head_atom(
         config: &T::Config,
         original: &Self,
-        shape: &[HeadTerm<C>],
-    ) -> Option<Self>
-    where
-        T: Cons<C>,
-    {
+        shape: &[HeadTerm<T::Constructor>],
+    ) -> Option<Self> {
         shape
             .iter()
             .map(|term| original.interpret_head_term(config, term))
             .collect()
     }
 
-    fn interpret_body_term<F>(&self, config: &T::Config, t: &BodyTerm<F>) -> Option<T>
-    where
-        F: Clone,
-        T: Cons<F> + Top,
-    {
+    fn interpret_body_term(&self, config: &T::Config, t: &BodyTerm<T::Functor>) -> Option<T> {
         match t {
             BodyTerm::Var(v) => Some(self[*v as usize].clone()),
             BodyTerm::Functor { functor, subterms } => {
@@ -139,21 +123,17 @@ impl<T: Clone> Tup<T> {
                     .iter()
                     .map(|t| self.interpret_body_term(config, t))
                     .collect::<Option<_>>()?;
-                T::cons(config, functor.clone(), subterms)
+                T::cons(config, functor.clone().into(), subterms)
             }
             BodyTerm::DontCare => Some(T::top()),
         }
     }
 
-    pub(super) fn interpret_body_atom<F>(
+    pub(super) fn interpret_body_atom(
         &self,
         config: &T::Config,
-        shape: &[BodyTerm<F>],
-    ) -> Option<Self>
-    where
-        F: Clone,
-        T: Cons<F> + Top,
-    {
+        shape: &[BodyTerm<T::Functor>],
+    ) -> Option<Self> {
         shape
             .iter()
             .map(|t| self.interpret_body_term(config, t))

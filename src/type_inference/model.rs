@@ -1,5 +1,3 @@
-use crate::traits::structural::ConstModel;
-
 pub type Variable = u16;
 
 #[derive(Debug, Clone)]
@@ -31,10 +29,10 @@ pub struct BodyBuiltin<F, Builtin> {
 }
 
 #[derive(Debug, Clone)]
-pub struct PatClause<Predicate, C: ConstModel> {
-    pub head: Vec<HeadTerm<C::Constructor>>,
-    pub body_atoms: Vec<BodyAtom<C::Functor, Predicate>>,
-    pub body_builtins: Vec<BodyBuiltin<C::Functor, C::Builtin>>,
+pub struct PatClause<Predicate, Functor, Constructor, Builtin> {
+    pub head: Vec<HeadTerm<Constructor>>,
+    pub body_atoms: Vec<BodyAtom<Functor, Predicate>>,
+    pub body_builtins: Vec<BodyBuiltin<Functor, Builtin>>,
     pub body_variables: u16,
 }
 

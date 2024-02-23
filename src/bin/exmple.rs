@@ -15,7 +15,7 @@ fn main() {
         NemoFunctor::Const(IdentConstant::IntConst(i))
     }
 
-    let mut program: Program<_, _> = Program::new();
+    let mut program: Program<_, _, _, _> = Program::new();
 
     let fact_clause = |vals: Vec<_>| PatClause {
         head: vals

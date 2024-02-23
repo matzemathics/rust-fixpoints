@@ -3,7 +3,7 @@ use std::iter::repeat_with;
 use crate::{
     traits::{
         lattice::{Bottom, Meet, PreOrder, Top},
-        structural::{Cons, InterpretBuiltin, Uncons},
+        structural::TypeDomain,
     },
     util::tup::Tup,
 };
@@ -135,9 +135,9 @@ impl<T: Clone> TypeTable<T> {
     // computes the meet of self with other
     // other[i] is unified with positions[i](self)
     // this might increase the number of rows quadratically
-    pub(super) fn meet<F>(&self, other: &Self, positions: &[BodyTerm<F>]) -> Self
+    pub(super) fn meet(&self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> Self
     where
-        T: Uncons<F> + Meet + PartialOrd,
+        T: TypeDomain,
     {
         let mut result = Self {
             rows: Vec::default(),
@@ -155,16 +155,12 @@ impl<T: Clone> TypeTable<T> {
     }
 }
 
-impl<T> TypeTable<T> {
-    pub(super) fn apply_ctor<Ctor>(
+impl<T: TypeDomain> TypeTable<T> {
+    pub(super) fn apply_ctor(
         self,
         config: &T::Config,
-        shape: &[HeadTerm<Ctor>],
-    ) -> TypeTable<T>
-    where
-        Ctor: Clone,
-        T: Cons<Ctor> + Clone,
-    {
+        shape: &[HeadTerm<T::Constructor>],
+    ) -> TypeTable<T> {
         let rows = self
             .rows
             .into_iter()
@@ -175,17 +171,13 @@ impl<T> TypeTable<T> {
     }
 }
 
-impl<T> TypeTable<T> {
-    pub(super) fn apply_builtin<F, Builtin>(
+impl<T: TypeDomain> TypeTable<T> {
+    pub(super) fn apply_builtin(
         &mut self,
         config: &T::Config,
-        builtin: &Builtin,
-        shape: &[BodyTerm<F>],
-    ) where
-        F: Clone,
-        Builtin: Clone,
-        T: Clone + Top + Cons<F> + Uncons<F> + InterpretBuiltin<Builtin> + Meet + PartialOrd,
-    {
+        builtin: &T::Builtin,
+        shape: &[BodyTerm<T::Functor>],
+    ) {
         let rows = std::mem::take(&mut self.rows);
         for mut row in rows {
             let Some(assignment) = row

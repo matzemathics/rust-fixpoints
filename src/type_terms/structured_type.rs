@@ -9,15 +9,15 @@ use std::{
 
 use crate::{
     traits::{
-        lattice::{Bottom, LocalMinimum, Meet, ThreeWayCompare, Top, Union},
-        structural::{Cons, InterpretBuiltin, TypeDomain, Uncons},
+        lattice::{Bottom, Meet, ThreeWayCompare, Top, Union},
+        structural::TypeDomain,
     },
     type_inference::Program,
     util::tup::Tup,
 };
 
 use super::{
-    const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NemoModel, NestedFunctor},
+    const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NestedFunctor},
     flat_type::FlatType,
 };
 
@@ -325,13 +325,29 @@ impl Top for StructuredType {
     }
 }
 
-impl InterpretBuiltin<NemoBuiltin> for StructuredType {
-    fn interpret(builtin: NemoBuiltin, tup: Tup<Self>) -> Option<Tup<Self>> {
-        todo!()
-    }
-}
+impl TypeDomain for StructuredType {
+    type Builtin = NemoBuiltin;
+    type Functor = NemoFunctor;
+    type Constructor = NemoCtor;
 
-impl Uncons<NemoFunctor> for StructuredType {
+    type Config = StructuredTypeConfig;
+
+    fn configure<P>(
+        _program: &Program<P, NemoFunctor, NemoCtor, NemoBuiltin>,
+    ) -> StructuredTypeConfig {
+        StructuredTypeConfig {}
+    }
+
+    fn init(config: Self::Config) -> Self {
+        let start = TypeNode::TypeNode(OrNode {
+            flat_types: FlatType::bot(),
+            functors: HashSet::new(),
+        });
+
+        let grammar = TypeGrammar::new();
+        Self { start, grammar }
+    }
+
     fn uncons(&self, func: &NemoFunctor) -> Option<Vec<Self>> {
         let TypeNode::TypeNode(start) = &self.start else {
             return match func {
@@ -372,12 +388,14 @@ impl Uncons<NemoFunctor> for StructuredType {
 
         Some(result)
     }
-}
 
-impl Cons<NemoFunctor> for StructuredType {
-    type Config = StructuredTypeConfig;
+    fn cons(config: &Self::Config, ctor: NemoCtor, subterms: Vec<Self>) -> Option<Self> {
+        let ctor = match ctor {
+            NemoCtor::Aggregate => todo!(),
+            NemoCtor::Null(_) => todo!(),
+            NemoCtor::Functor(f) => f,
+        };
 
-    fn cons(_config: &Self::Config, ctor: NemoFunctor, subterms: Vec<Self>) -> Option<Self> {
         let NemoFunctor::Nested(func) = ctor else {
             let flat_types = FlatType::from_constant(ctor);
             let start = TypeNode::TypeNode(OrNode {
@@ -407,39 +425,9 @@ impl Cons<NemoFunctor> for StructuredType {
         grammar.add_rule(func, start_rule);
         Some(Self { start, grammar })
     }
-}
 
-impl Cons<NemoCtor> for StructuredType {
-    type Config = StructuredTypeConfig;
-
-    fn cons(config: &Self::Config, ctor: NemoCtor, subterms: Vec<Self>) -> Option<Self> {
-        match ctor {
-            NemoCtor::Aggregate => todo!(),
-            NemoCtor::Null(_) => todo!(),
-            NemoCtor::Functor(f) => Self::cons(config, f, subterms),
-        }
-    }
-}
-
-impl LocalMinimum<StructuredTypeConfig> for StructuredType {
-    fn local_minimum(_key: &StructuredTypeConfig) -> Self {
-        let start = TypeNode::TypeNode(OrNode {
-            flat_types: FlatType::bot(),
-            functors: HashSet::new(),
-        });
-
-        let grammar = TypeGrammar::new();
-        Self { start, grammar }
-    }
-}
-
-impl TypeDomain for StructuredType {
-    type Model = NemoModel;
-
-    type Config = StructuredTypeConfig;
-
-    fn configure<P>(_program: &Program<P, NemoModel>) -> StructuredTypeConfig {
-        StructuredTypeConfig {}
+    fn interpret(builtin: NemoBuiltin, tup: Tup<Self>) -> Option<Tup<Self>> {
+        todo!()
     }
 }
 
@@ -451,10 +439,7 @@ mod test {
     };
 
     use crate::{
-        traits::{
-            lattice::{Bottom, Meet, Union},
-            structural::Uncons,
-        },
+        traits::lattice::{Bottom, Meet, Union},
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
             flat_type::FlatType,
@@ -462,7 +447,7 @@ mod test {
         },
     };
 
-    use super::{StructuredType, TypeGrammar, TypeNode};
+    use super::{StructuredType, TypeDomain, TypeGrammar, TypeNode};
 
     fn functor(name: &str, len: usize) -> NestedFunctor {
         NestedFunctor::List {

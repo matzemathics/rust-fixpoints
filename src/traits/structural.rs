@@ -1,47 +1,19 @@
-use super::lattice::{LocalMinimum, Meet, Top};
+use super::lattice::{Meet, Top};
 use crate::{type_inference::Program, util::tup::Tup};
 
-pub trait Uncons<F>: Sized {
-    fn uncons(&self, func: &F) -> Option<Vec<Self>>;
-}
-
-pub trait Cons<C>: Sized {
-    type Config;
-
-    fn cons(config: &Self::Config, ctor: C, subterms: Vec<Self>) -> Option<Self>;
-}
-pub trait InterpretBuiltin<Builtin>: Sized {
-    fn interpret(builtin: Builtin, tup: Tup<Self>) -> Option<Tup<Self>>;
-}
-
-pub trait ConstModel {
-    type Constructor: Clone;
+pub trait TypeDomain: Top + Meet + Clone + PartialOrd {
     type Functor: Clone;
+    type Constructor: Clone + From<Self::Functor>;
     type Builtin: Clone;
-}
-
-macro_rules! assoc {
-    (::$id:ident) => {
-        <Self as TypeDomain>::$id
-    };
-    (::$rm:ident::$id:ident) => {
-        <<Self as TypeDomain>::$rm as ConstModel>::$id
-    };
-}
-
-pub trait TypeDomain:
-    Cons<assoc!(::Model::Constructor), Config = assoc!(::Config)>
-    + Cons<assoc!(::Model::Functor), Config = assoc!(::Config)>
-    + Uncons<assoc!(::Model::Functor)>
-    + InterpretBuiltin<assoc!(::Model::Builtin)>
-    + LocalMinimum<assoc!(::Config)>
-    + Top
-    + Meet
-    + Clone
-    + PartialOrd
-{
-    type Model: ConstModel;
     type Config;
 
-    fn configure<P>(program: &Program<P, Self::Model>) -> assoc!(::Config);
+    fn init(config: Self::Config) -> Self;
+    fn configure<P>(
+        program: &Program<P, Self::Functor, Self::Constructor, Self::Builtin>,
+    ) -> Self::Config;
+
+    fn cons(config: &Self::Config, ctor: Self::Constructor, subterms: Vec<Self>) -> Option<Self>;
+    fn uncons(&self, func: &Self::Functor) -> Option<Vec<Self>>;
+
+    fn interpret(builtin: Self::Builtin, tup: Tup<Self>) -> Option<Tup<Self>>;
 }

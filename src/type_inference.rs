@@ -1,9 +1,6 @@
 use std::{collections::HashMap, hash::Hash};
 
-use crate::{
-    traits::structural::{ConstModel, TypeDomain},
-    type_inference::type_table::TypeTable,
-};
+use crate::{traits::structural::TypeDomain, type_inference::type_table::TypeTable};
 
 use self::{
     fixpoint::{MonotoneTransform, Recursor},
@@ -15,17 +12,22 @@ pub mod model;
 pub mod tup;
 pub mod type_table;
 
-impl<P: Clone, M: ConstModel> PatClause<P, M> {
-    fn execute<T: TypeDomain<Model = M>>(
+impl<Predicate: Clone, Functor, Constructor, Builtin>
+    PatClause<Predicate, Functor, Constructor, Builtin>
+{
+    fn execute<T>(
         &self,
         config: &<T as TypeDomain>::Config,
-        recursive: &mut impl Recursor<P, TypeTable<T>>,
-    ) -> TypeTable<T> {
+        recursive: &mut impl Recursor<Predicate, TypeTable<T>>,
+    ) -> TypeTable<T>
+    where
+        T: TypeDomain<Functor = Functor, Constructor = Constructor, Builtin = Builtin>,
+    {
         let mut table: TypeTable<T> = TypeTable::new(self.body_variables);
 
         for BodyAtom { predicate, terms } in &self.body_atoms {
             let other = recursive.recurse(predicate.clone());
-            table = table.meet(other, terms);
+            table = table.meet(other, terms.as_slice());
         }
 
         for BodyBuiltin { builtin, terms } in &self.body_builtins {
@@ -36,31 +38,33 @@ impl<P: Clone, M: ConstModel> PatClause<P, M> {
     }
 }
 
-pub struct Program<P, C: ConstModel>(pub(crate) HashMap<P, Vec<PatClause<P, C>>>);
+pub struct Program<Predicate, Functor, Constructor, Builtin>(
+    pub(crate) HashMap<Predicate, Vec<PatClause<Predicate, Functor, Constructor, Builtin>>>,
+);
 
-impl<P, C: ConstModel> Program<P, C> {
+impl<P: Eq + Hash, F, C, B> Program<P, F, C, B> {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
-}
 
-impl<P: Eq + Hash, C: ConstModel> Program<P, C> {
-    pub fn add_rule(&mut self, predicate: P, clause: PatClause<P, C>) {
+    pub fn add_rule(&mut self, predicate: P, clause: PatClause<P, F, C, B>) {
         self.0.entry(predicate).or_default().push(clause)
     }
 }
 
-impl<P, C> Program<P, C>
+impl<Predicate, Functor, Constructor, Builtin> Program<Predicate, Functor, Constructor, Builtin>
 where
-    P: Eq + Hash + Clone,
-    C: ConstModel,
+    Predicate: Eq + Hash + Clone,
 {
-    fn execute<T: TypeDomain<Model = C>>(
+    fn execute<T>(
         &self,
         config: &<T as TypeDomain>::Config,
-        p: &P,
-        recursive: &mut impl Recursor<P, TypeTable<T>>,
-    ) -> TypeTable<T> {
+        p: &Predicate,
+        recursive: &mut impl Recursor<Predicate, TypeTable<T>>,
+    ) -> TypeTable<T>
+    where
+        T: TypeDomain<Functor = Functor, Constructor = Constructor, Builtin = Builtin>,
+    {
         self.0
             .get(p)
             .iter()
@@ -72,7 +76,10 @@ where
             })
     }
 
-    pub fn analyse<T: TypeDomain<Model = C>>(self) -> TypeAnalysis<P, T> {
+    pub fn analyse<T>(self) -> TypeAnalysis<Predicate, T>
+    where
+        T: TypeDomain<Functor = Functor, Constructor = Constructor, Builtin = Builtin>,
+    {
         let config = T::configure(&self);
         TypeAnalysis {
             program: self,
@@ -82,7 +89,7 @@ where
 }
 
 pub struct TypeAnalysis<P, T: TypeDomain> {
-    program: Program<P, T::Model>,
+    program: Program<P, T::Functor, T::Constructor, T::Builtin>,
     config: <T as TypeDomain>::Config,
 }
 
