@@ -8,7 +8,10 @@ use crate::{
     util::tup::Tup,
 };
 
-use super::model::{BodyTerm, HeadTerm};
+use super::{
+    model::{BodyTerm, HeadTerm},
+    tup::UnionResult,
+};
 
 /// A table of incomparable tuples of types, i. e.
 /// there are no rows r1, r2, such that for all
@@ -42,13 +45,23 @@ impl<T: PreOrder> PreOrder for TypeTable<T> {
     }
 }
 
-impl<T> TypeTable<T> {
+impl<T: Clone> TypeTable<T> {
     pub(super) fn new(width: u16) -> TypeTable<T>
     where
         T: Top,
     {
         Self {
             rows: vec![repeat_with(T::top).take(width as usize).collect()],
+        }
+    }
+
+    pub(super) fn map<R>(self, f: impl Fn(T) -> R) -> TypeTable<R> {
+        TypeTable {
+            rows: self
+                .rows
+                .into_iter()
+                .map(|tup| tup.into_iter().map(|t| f(t.clone())).collect())
+                .collect(),
         }
     }
 }
@@ -60,42 +73,61 @@ impl<T> TypeTable<T> {
 }
 
 impl<T: Clone> TypeTable<T> {
-    fn add_row(&mut self, mut new_row: Tup<T>)
+    fn add_row(&mut self, mut new_row: Tup<T>) -> bool
     where
         T: PartialOrd,
     {
+        let mut increased = false;
+
         loop {
-            let mut changed = false;
-            self.rows.retain(|row| {
-                if new_row.try_union_with(row) {
-                    changed = true;
+            let mut new_row_changed = false;
+            self.rows.retain(|row| match new_row.try_union_with(row) {
+                Some(union_result) => {
+                    if matches!(
+                        union_result,
+                        UnionResult::Larger | UnionResult::Incomparable
+                    ) {
+                        increased = true
+                    }
+
+                    if matches!(
+                        union_result,
+                        UnionResult::Incomparable | UnionResult::Smaller
+                    ) {
+                        new_row_changed = true
+                    }
+
                     false
-                } else {
-                    true
                 }
+                None => true,
             });
 
-            if !changed {
+            if !new_row_changed {
                 break;
             }
         }
 
-        self.rows.push(new_row)
+        self.rows.push(new_row);
+        increased
     }
 
     // updates self = self union other
-    pub(super) fn union_with(&mut self, other: Self)
+    pub(super) fn union_with(&mut self, other: Self) -> bool
     where
         T: PartialOrd,
     {
         if self.rows.len() == 0 {
             *self = other.clone();
-            return;
+            return self.rows.len() > 0;
         }
 
+        let mut changed = false;
+
         for row in other.rows {
-            self.add_row(row)
+            changed |= self.add_row(row)
         }
+
+        changed
     }
 }
 
@@ -114,7 +146,7 @@ impl<T: Clone> TypeTable<T> {
         for row in &self.rows {
             for other_row in &other.rows {
                 if let Some(new_row) = row.clone().unify(other_row, positions) {
-                    result.add_row(new_row)
+                    result.add_row(new_row);
                 }
             }
         }
@@ -164,7 +196,7 @@ impl<T> TypeTable<T> {
             };
 
             if row.unify_with(&assignment, shape) {
-                self.add_row(row)
+                self.add_row(row);
             }
         }
     }

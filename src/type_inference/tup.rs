@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cmp::Ordering};
+use std::{borrow::Cow, cmp::Ordering, collections::btree_set::Union};
 
 use crate::{
     traits::{
@@ -9,6 +9,17 @@ use crate::{
 };
 
 use super::model::{BodyTerm, HeadTerm};
+
+pub(super) enum UnionResult {
+    /// self was larger than other
+    Larger,
+    /// self == other
+    Equal,
+    /// self was smaller than other
+    Smaller,
+    /// self and other were incomparable
+    Incomparable,
+}
 
 impl<T: Clone> Tup<T> {
     pub(super) fn unify<F>(mut self, other: &Self, positions: &[BodyTerm<F>]) -> Option<Self>
@@ -45,7 +56,7 @@ impl<T: Clone> Tup<T> {
         true
     }
 
-    pub(super) fn try_union_with(&mut self, other: &Self) -> bool
+    pub(super) fn try_union_with(&mut self, other: &Self) -> Option<UnionResult>
     where
         T: PartialOrd,
     {
@@ -55,16 +66,32 @@ impl<T: Clone> Tup<T> {
             .map(|(l, r)| l.partial_cmp(r))
             .collect::<Option<Box<_>>>()
         else {
-            return false;
+            return None;
         };
+
+        let mut result = UnionResult::Equal;
 
         for (index, ordering) in cmp.into_iter().enumerate() {
             if matches!(ordering, Ordering::Less) {
                 self[index] = other[index].clone();
+
+                result = match result {
+                    UnionResult::Incomparable => UnionResult::Incomparable,
+                    UnionResult::Larger => UnionResult::Incomparable,
+                    UnionResult::Equal => UnionResult::Smaller,
+                    UnionResult::Smaller => UnionResult::Smaller,
+                }
+            } else if matches!(ordering, Ordering::Greater) {
+                result = match result {
+                    UnionResult::Larger => UnionResult::Larger,
+                    UnionResult::Equal => UnionResult::Larger,
+                    UnionResult::Smaller => UnionResult::Incomparable,
+                    UnionResult::Incomparable => UnionResult::Incomparable,
+                }
             }
         }
 
-        true
+        Some(result)
     }
 }
 
