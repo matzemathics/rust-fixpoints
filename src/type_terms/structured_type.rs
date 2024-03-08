@@ -18,22 +18,22 @@ use crate::{
 
 use super::{
     const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NestedFunctor},
-    flat_type::FlatType,
+    flat_type::TypeLike,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StructuredType {
-    start: TypeNode,
-    grammar: TypeGrammar,
+pub struct StructuredType<Flat> {
+    start: TypeNode<Flat>,
+    grammar: TypeGrammar<Flat>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
-enum TypeNode {
+enum TypeNode<Flat> {
     Any,
-    TypeNode(OrNode),
+    TypeNode(OrNode<Flat>),
 }
 
-impl Debug for TypeNode {
+impl<Flat: Debug> Debug for TypeNode<Flat> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Any => write!(f, "Any"),
@@ -43,12 +43,12 @@ impl Debug for TypeNode {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct OrNode {
-    flat_types: FlatType,
+struct OrNode<Flat> {
+    flat_types: Flat,
     functors: HashSet<NestedFunctor>,
 }
 
-impl Debug for OrNode {
+impl<Flat: Debug> Debug for OrNode<Flat> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_set()
             .entry(&self.flat_types)
@@ -57,7 +57,7 @@ impl Debug for OrNode {
     }
 }
 
-impl PartialOrd for OrNode {
+impl<Flat: PartialOrd> PartialOrd for OrNode<Flat> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let flat_ordering = self.flat_types.partial_cmp(&other.flat_types)?;
 
@@ -78,14 +78,14 @@ impl PartialOrd for OrNode {
     }
 }
 
-impl Meet for OrNode {
+impl<Flat: Meet + PartialOrd> Meet for OrNode<Flat> {
     fn meet_with(&mut self, other: &Self) {
         self.flat_types.meet_with(&other.flat_types);
         self.functors.retain(|f| other.functors.contains(f))
     }
 }
 
-impl PartialOrd for TypeNode {
+impl<Flat: PartialOrd> PartialOrd for TypeNode<Flat> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (TypeNode::Any, TypeNode::Any) => Some(Ordering::Equal),
@@ -96,7 +96,7 @@ impl PartialOrd for TypeNode {
     }
 }
 
-impl Meet for TypeNode {
+impl<Flat: Meet + PartialOrd + Clone> Meet for TypeNode<Flat> {
     fn meet_with(&mut self, other: &Self) {
         let TypeNode::TypeNode(inner) = self else {
             *self = other.clone();
@@ -112,7 +112,7 @@ impl Meet for TypeNode {
     }
 }
 
-impl TypeNode {
+impl<Flat> TypeNode<Flat> {
     fn functors(&self) -> Cow<'_, HashSet<NestedFunctor>> {
         match self {
             TypeNode::Any => Cow::Owned(HashSet::new()),
@@ -122,11 +122,11 @@ impl TypeNode {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct TypeGrammar {
-    rules: HashMap<NestedFunctor, Vec<TypeNode>>,
+struct TypeGrammar<Flat> {
+    rules: HashMap<NestedFunctor, Vec<TypeNode<Flat>>>,
 }
 
-impl Debug for TypeGrammar {
+impl<Flat: Debug> Debug for TypeGrammar<Flat> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
 
@@ -138,14 +138,14 @@ impl Debug for TypeGrammar {
     }
 }
 
-impl TypeGrammar {
+impl<Flat: Clone + Union> TypeGrammar<Flat> {
     fn new() -> Self {
         Self {
             rules: HashMap::new(),
         }
     }
 
-    fn get(&self, functor: &NestedFunctor) -> Option<&[TypeNode]> {
+    fn get(&self, functor: &NestedFunctor) -> Option<&[TypeNode<Flat>]> {
         self.rules.get(functor).map(Vec::as_slice)
     }
 
@@ -177,7 +177,7 @@ impl TypeGrammar {
         Self { rules }
     }
 
-    fn add_rule(&mut self, func: NestedFunctor, args: Vec<TypeNode>) {
+    fn add_rule(&mut self, func: NestedFunctor, args: Vec<TypeNode<Flat>>) {
         let mut entry = match self.rules.entry(func) {
             hash_map::Entry::Vacant(entry) => {
                 entry.insert(args);
@@ -201,7 +201,7 @@ impl TypeGrammar {
         }
     }
 
-    fn union_with(&mut self, other: TypeGrammar) {
+    fn union_with(&mut self, other: TypeGrammar<Flat>) {
         for (func, args) in other.rules {
             self.add_rule(func, args)
         }
@@ -211,7 +211,10 @@ impl TypeGrammar {
 #[derive(Debug, Clone)]
 pub struct StructuredTypeConfig {}
 
-impl PartialOrd for StructuredType {
+impl<Flat> PartialOrd for StructuredType<Flat>
+where
+    Flat: PartialOrd + Eq + Clone + Union,
+{
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let mut comparison = ThreeWayCompare::init().chain(&self.start, &other.start)?;
 
@@ -250,14 +253,17 @@ impl PartialOrd for StructuredType {
     }
 }
 
-impl Meet for StructuredType {
+impl<Flat> Meet for StructuredType<Flat>
+where
+    Flat: Meet + PartialOrd + Eq + Clone + Union,
+{
     fn meet_with(&mut self, other: &Self) {
         let mut rules = HashMap::new();
         let mut discovered_left = HashSet::new();
         let mut discovered_right = HashSet::new();
         let mut visit: Vec<NestedFunctor> = Vec::new();
 
-        let mut visit_nodes = |left: &mut TypeNode, right: &TypeNode| {
+        let mut visit_nodes = |left: &mut TypeNode<Flat>, right: &TypeNode<Flat>| {
             let mut res: Option<Vec<_>> = None;
             if matches!(left, TypeNode::Any) {
                 discovered_right.extend(right.functors().iter().cloned());
@@ -316,7 +322,10 @@ impl Meet for StructuredType {
     }
 }
 
-impl Top for StructuredType {
+impl<Flat> Top for StructuredType<Flat>
+where
+    Flat: PartialOrd + Eq + Clone + Union,
+{
     fn top() -> Self {
         Self {
             start: TypeNode::Any,
@@ -325,7 +334,10 @@ impl Top for StructuredType {
     }
 }
 
-impl TypeDomain for StructuredType {
+impl<Flat> TypeDomain for StructuredType<Flat>
+where
+    Flat: PartialOrd + Meet + Clone + Bottom + Eq + Union + TypeLike,
+{
     type Builtin = NemoBuiltin;
     type Functor = NemoFunctor;
     type Constructor = NemoCtor;
@@ -340,7 +352,7 @@ impl TypeDomain for StructuredType {
 
     fn init(config: Self::Config) -> Self {
         let start = TypeNode::TypeNode(OrNode {
-            flat_types: FlatType::bot(),
+            flat_types: Flat::bot(),
             functors: HashSet::new(),
         });
 
@@ -397,7 +409,7 @@ impl TypeDomain for StructuredType {
         };
 
         let NemoFunctor::Nested(func) = ctor else {
-            let flat_types = FlatType::from_constant(ctor);
+            let flat_types = Flat::from_constant(ctor);
             let start = TypeNode::TypeNode(OrNode {
                 flat_types,
                 functors: HashSet::new(),
@@ -410,7 +422,7 @@ impl TypeDomain for StructuredType {
         };
 
         let start = TypeNode::TypeNode(OrNode {
-            flat_types: FlatType::bot(),
+            flat_types: Flat::bot(),
             functors: HashSet::from([func.clone()]),
         });
 
@@ -442,7 +454,7 @@ mod test {
         traits::lattice::{Bottom, Meet, Union},
         type_terms::{
             const_model::{IdentConstant, NemoFunctor, NestedFunctor},
-            flat_type::FlatType,
+            flat_type::{FlatType, TypeLike},
             structured_type::OrNode,
         },
     };
@@ -456,7 +468,7 @@ mod test {
         }
     }
 
-    fn functor_node<T>(t: T) -> TypeNode
+    fn functor_node<T>(t: T) -> TypeNode<FlatType>
     where
         HashSet<NestedFunctor>: From<T>,
     {
@@ -466,7 +478,7 @@ mod test {
         })
     }
 
-    fn flat_node(f: impl IntoIterator<Item = FlatType>) -> TypeNode {
+    fn flat_node(f: impl IntoIterator<Item = FlatType>) -> TypeNode<FlatType> {
         let flat_types = f.into_iter().fold(FlatType::bot(), |mut current, new| {
             current.union_with(&new);
             current
@@ -483,8 +495,8 @@ mod test {
         let list_cons = functor("::", 2);
         let nil = NemoFunctor::Const(IdentConstant::IriConst("<nil>".into()));
 
-        let list_node = TypeNode::TypeNode(OrNode {
-            flat_types: FlatType::from_constant(nil.clone()),
+        let list_node = TypeNode::TypeNode(OrNode::<FlatType> {
+            flat_types: TypeLike::from_constant(nil.clone()),
             functors: HashSet::from([list_cons.clone()]),
         });
 

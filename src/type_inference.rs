@@ -7,6 +7,7 @@ use self::{
     model::{BodyAtom, BodyBuiltin, PatClause},
 };
 
+mod backwards;
 pub mod fixpoint;
 pub mod model;
 pub mod tup;
@@ -15,7 +16,7 @@ pub mod type_table;
 impl<Predicate: Clone, Functor, Constructor, Builtin>
     PatClause<Predicate, Functor, Constructor, Builtin>
 {
-    fn execute<T>(
+    fn execute_body<T>(
         &self,
         config: &<T as TypeDomain>::Config,
         recursive: &mut impl Recursor<Predicate, TypeTable<T>>,
@@ -34,7 +35,7 @@ impl<Predicate: Clone, Functor, Constructor, Builtin>
             table.apply_builtin(config, builtin, terms);
         }
 
-        table.apply_ctor(config, &self.head)
+        table
     }
 }
 
@@ -69,7 +70,11 @@ where
             .get(p)
             .iter()
             .flat_map(|b| b.iter())
-            .map(|clause| clause.execute(config, recursive))
+            .map(|clause| {
+                clause
+                    .execute_body(config, recursive)
+                    .apply_ctor(config, &clause.head)
+            })
             .fold(TypeTable::empty(), |mut current, next| {
                 current.union_with(next);
                 current

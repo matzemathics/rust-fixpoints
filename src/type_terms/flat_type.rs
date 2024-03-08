@@ -136,7 +136,26 @@ prod_lattice! {
 }
 
 impl FlatType {
-    pub fn contains(&self, val: &NemoFunctor) -> bool {
+    pub(crate) fn int() -> Self {
+        let mut res = Self::bot();
+        res.integer = IntType::top();
+        res
+    }
+
+    pub(crate) fn str() -> Self {
+        let mut res = Self::bot();
+        res.string = ToppedLattice::top();
+        res
+    }
+}
+
+pub trait TypeLike {
+    fn contains(&self, val: &NemoFunctor) -> bool;
+    fn from_constant(val: NemoFunctor) -> Self;
+}
+
+impl TypeLike for FlatType {
+    fn contains(&self, val: &NemoFunctor) -> bool {
         match val {
             NemoFunctor::Double => self.double,
             NemoFunctor::Const(IdentConstant::IntConst(i)) => self.integer.contains(*i),
@@ -146,7 +165,7 @@ impl FlatType {
         }
     }
 
-    pub fn from_constant(val: NemoFunctor) -> Self {
+    fn from_constant(val: NemoFunctor) -> Self {
         let mut result = Self::bot();
 
         match val {
@@ -162,17 +181,5 @@ impl FlatType {
         }
 
         result
-    }
-
-    pub(crate) fn int() -> Self {
-        let mut res = Self::bot();
-        res.integer = IntType::top();
-        res
-    }
-
-    pub(crate) fn str() -> Self {
-        let mut res = Self::bot();
-        res.string = ToppedLattice::top();
-        res
     }
 }

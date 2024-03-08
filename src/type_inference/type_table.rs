@@ -169,6 +169,20 @@ impl<T: TypeDomain> TypeTable<T> {
 
         TypeTable { rows }
     }
+
+    pub(super) fn apply_atom(
+        self,
+        config: &T::Config,
+        shape: &[BodyTerm<T::Functor>],
+    ) -> TypeTable<T> {
+        let rows = self
+            .rows
+            .into_iter()
+            .filter_map(|row| Tup::interpret_body_atom(&row, config, shape))
+            .collect();
+
+        TypeTable { rows }
+    }
 }
 
 impl<T: TypeDomain> TypeTable<T> {

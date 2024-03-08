@@ -6,6 +6,7 @@ use fixpoints::{
     },
     type_terms::{
         const_model::{IdentConstant, NemoCtor, NemoFunctor, NestedFunctor},
+        flat_type::FlatType,
         structured_type::StructuredType,
     },
 };
@@ -49,6 +50,6 @@ fn main() {
         },
     );
 
-    let pt = compute_fixpoint("list", program.analyse::<StructuredType>());
+    let pt = compute_fixpoint("list", program.analyse::<StructuredType<FlatType>>());
     println!("{pt:#?}");
 }
