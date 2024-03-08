@@ -90,8 +90,7 @@ impl<T: Clone> Tup<T> {
 }
 
 impl<T: TypeDomain> Tup<T> {
-    fn interpret_head_term(&self, config: &T::Config, t: &HeadTerm<T::Constructor>) -> Option<T>
-where {
+    fn interpret_head_term(&self, config: &T::Config, t: &HeadTerm<T::Constructor>) -> Option<T> {
         match t {
             HeadTerm::Var(v) => Some(self[*v as usize].clone()),
             HeadTerm::Ctor(c, subterms) => {
@@ -115,17 +114,22 @@ where {
             .collect()
     }
 
-    fn interpret_body_term(&self, config: &T::Config, t: &BodyTerm<T::Functor>) -> Option<T> {
+    fn interpret_body_term(
+        &self,
+        config: &T::Config,
+        t: &BodyTerm<T::Functor>,
+        dont_care: impl Fn() -> T,
+    ) -> Option<T> {
         match t {
             BodyTerm::Var(v) => Some(self[*v as usize].clone()),
             BodyTerm::Functor { functor, subterms } => {
                 let subterms = subterms
                     .iter()
-                    .map(|t| self.interpret_body_term(config, t))
+                    .map(|t| self.interpret_body_term(config, t, &dont_care))
                     .collect::<Option<_>>()?;
                 T::cons(config, functor.clone().into(), subterms)
             }
-            BodyTerm::DontCare => Some(T::top()),
+            BodyTerm::DontCare => Some(dont_care()),
         }
     }
 
@@ -133,10 +137,11 @@ where {
         &self,
         config: &T::Config,
         shape: &[BodyTerm<T::Functor>],
+        dont_care: impl Fn() -> T,
     ) -> Option<Self> {
         shape
             .iter()
-            .map(|t| self.interpret_body_term(config, t))
+            .map(|t| self.interpret_body_term(config, t, &dont_care))
             .collect()
     }
 }

@@ -183,3 +183,41 @@ impl TypeLike for FlatType {
         result
     }
 }
+
+prod_lattice! {
+    pub struct WildcardType {
+        wildcard: bool,
+        flat_type: FlatType,
+    }
+}
+
+impl From<FlatType> for WildcardType {
+    fn from(value: FlatType) -> Self {
+        Self {
+            wildcard: false,
+            flat_type: value,
+        }
+    }
+}
+
+impl TypeLike for WildcardType {
+    fn contains(&self, val: &NemoFunctor) -> bool {
+        self.flat_type.contains(val)
+    }
+
+    fn from_constant(val: NemoFunctor) -> Self {
+        Self {
+            wildcard: false,
+            flat_type: FlatType::from_constant(val),
+        }
+    }
+}
+
+impl WildcardType {
+    pub fn wildcard() -> Self {
+        WildcardType {
+            wildcard: true,
+            flat_type: FlatType::bot(),
+        }
+    }
+}

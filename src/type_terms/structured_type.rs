@@ -3,6 +3,7 @@ use std::{
     cmp::Ordering,
     collections::{hash_map, HashMap, HashSet},
     fmt::Debug,
+    hash::Hash,
     iter::repeat_with,
     vec,
 };
@@ -25,6 +26,45 @@ use super::{
 pub struct StructuredType<Flat> {
     start: TypeNode<Flat>,
     grammar: TypeGrammar<Flat>,
+}
+
+impl<Flat: Clone + Eq + Union> From<Flat> for StructuredType<Flat> {
+    fn from(value: Flat) -> Self {
+        Self {
+            start: TypeNode::TypeNode(OrNode {
+                flat_types: value,
+                functors: HashSet::new(),
+            }),
+            grammar: TypeGrammar::new(),
+        }
+    }
+}
+
+impl<Flat> StructuredType<Flat> {
+    pub fn map<T>(self, f: impl Fn(Flat) -> T) -> StructuredType<T> {
+        let map_node = |node| match node {
+            TypeNode::Any => TypeNode::Any,
+            TypeNode::TypeNode(OrNode {
+                flat_types,
+                functors,
+            }) => TypeNode::TypeNode(OrNode {
+                flat_types: f(flat_types),
+                functors,
+            }),
+        };
+
+        let rules = self
+            .grammar
+            .rules
+            .into_iter()
+            .map(|(f, n)| (f, n.into_iter().map(map_node).collect()))
+            .collect();
+
+        StructuredType {
+            start: map_node(self.start),
+            grammar: TypeGrammar { rules },
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]

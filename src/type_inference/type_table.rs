@@ -174,11 +174,12 @@ impl<T: TypeDomain> TypeTable<T> {
         self,
         config: &T::Config,
         shape: &[BodyTerm<T::Functor>],
+        dont_care: impl Fn() -> T,
     ) -> TypeTable<T> {
         let rows = self
             .rows
             .into_iter()
-            .filter_map(|row| Tup::interpret_body_atom(&row, config, shape))
+            .filter_map(|row| Tup::interpret_body_atom(&row, config, shape, &dont_care))
             .collect();
 
         TypeTable { rows }
@@ -195,7 +196,7 @@ impl<T: TypeDomain> TypeTable<T> {
         let rows = std::mem::take(&mut self.rows);
         for mut row in rows {
             let Some(assignment) = row
-                .interpret_body_atom(config, shape)
+                .interpret_body_atom(config, shape, T::top)
                 .and_then(|tup| T::interpret(builtin.clone(), tup))
             else {
                 continue;
