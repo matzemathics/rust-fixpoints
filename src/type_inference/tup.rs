@@ -152,18 +152,18 @@ impl<T: TypeDomain> Tup<T> {
         &self,
         config: &T::Config,
         t: &BodyTerm<T::Functor>,
-        dont_care: impl Fn() -> T,
+        dont_care: T,
     ) -> Option<T> {
         match t {
             BodyTerm::Var(v) => Some(self[*v as usize].clone()),
             BodyTerm::Functor { functor, subterms } => {
                 let subterms = subterms
                     .iter()
-                    .map(|t| self.interpret_body_term(config, t, &dont_care))
+                    .map(|t| self.interpret_body_term(config, t, dont_care.clone()))
                     .collect::<Option<_>>()?;
                 T::cons(config, functor.clone().into(), subterms)
             }
-            BodyTerm::DontCare => Some(dont_care()),
+            BodyTerm::DontCare => Some(dont_care),
         }
     }
 
@@ -171,11 +171,11 @@ impl<T: TypeDomain> Tup<T> {
         &self,
         config: &T::Config,
         shape: &[BodyTerm<T::Functor>],
-        dont_care: impl Fn() -> T,
+        dont_care: T,
     ) -> Option<Self> {
         shape
             .iter()
-            .map(|t| self.interpret_body_term(config, t, &dont_care))
+            .map(|t| self.interpret_body_term(config, t, dont_care.clone()))
             .collect()
     }
 }

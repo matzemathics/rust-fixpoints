@@ -7,7 +7,7 @@ use self::{
     model::{BodyAtom, BodyBuiltin, PatClause},
 };
 
-mod backwards;
+pub mod backwards;
 pub mod fixpoint;
 pub mod model;
 pub mod tup;
@@ -39,6 +39,7 @@ impl<Predicate: Clone, Functor, Constructor, Builtin>
     }
 }
 
+#[derive(Clone)]
 pub struct Program<Predicate, Functor, Constructor, Builtin>(
     pub(crate) HashMap<Predicate, Vec<PatClause<Predicate, Functor, Constructor, Builtin>>>,
 );
@@ -93,6 +94,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct TypeAnalysis<P, T: TypeDomain> {
     program: Program<P, T::Functor, T::Constructor, T::Builtin>,
     config: <T as TypeDomain>::Config,

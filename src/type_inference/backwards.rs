@@ -4,9 +4,7 @@ use std::{
 };
 
 use crate::{
-    traits::lattice::Bottom,
     type_terms::{
-        const_model::NemoCtor,
         flat_type::{FlatType, WildcardType},
         structured_type::StructuredType,
     },
@@ -61,10 +59,11 @@ where
 
             for atom in &clause.body_atoms {
                 // construct head -> matching
-                let matching: TypeTable<BackType> =
-                    frontier.clone().apply_atom(&self.config, &atom.terms, || {
-                        StructuredType::from(WildcardType::wildcard())
-                    });
+                let matching: TypeTable<BackType> = frontier.clone().apply_atom(
+                    &self.config,
+                    &atom.terms,
+                    StructuredType::from(WildcardType::wildcard()),
+                );
 
                 match result.entry(atom.predicate.clone()) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
@@ -83,12 +82,12 @@ where
         changed.into_iter()
     }
 
-    fn backwards(
+    pub fn backwards(
         &self,
         dg: HashMap<P, Vec<P>>,
         output: P,
         forward: HashMap<P, TypeTable<ForwardType>>,
-    ) {
+    ) -> HashMap<P, TypeTable<BackType>> {
         let start = forward.get(&output).unwrap().clone();
         let mut work = vec![output.clone()];
         let mut result = HashMap::from([(output, start.map(|t| t.map(WildcardType::from)))]);
@@ -108,5 +107,7 @@ where
                 work.extend(dependent)
             }
         }
+
+        result
     }
 }

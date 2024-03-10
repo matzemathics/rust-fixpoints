@@ -5,7 +5,7 @@ pub trait TypeDomain: Top + Meet + Clone + PartialOrd {
     type Functor: Clone;
     type Constructor: Clone + From<Self::Functor>;
     type Builtin: Clone;
-    type Config;
+    type Config: Clone;
 
     fn init(config: Self::Config) -> Self;
     fn configure<P>(

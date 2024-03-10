@@ -1,6 +1,7 @@
 use fixpoints::{
     type_inference::{
-        fixpoint::compute_fixpoint,
+        backwards,
+        fixpoint::{compute_fixpoint, MonotoneTransform},
         model::{BodyAtom, BodyTerm, HeadTerm, PatClause},
         Program,
     },
@@ -75,6 +76,9 @@ fn main() {
         },
     );
 
-    let pt = compute_fixpoint("list_list", program.analyse::<StructuredType<FlatType>>());
-    println!("{pt:#?}");
+    let analysis = program.analyse::<StructuredType<FlatType>>();
+    let fixpoint = compute_fixpoint("list_list", analysis.clone());
+    let result = analysis.backwards(fixpoint.deps, "list_list", fixpoint.map);
+
+    println!("{:#?}", result);
 }

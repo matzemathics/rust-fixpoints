@@ -20,5 +20,5 @@ impl MonotoneTransform<u64> for Fibonacci {
 
 fn main() {
     let table = compute_fixpoint(9, Fibonacci);
-    println!("Result {}", table.lookup(&9).unwrap());
+    println!("Result {}", table.map.get(&9).unwrap());
 }

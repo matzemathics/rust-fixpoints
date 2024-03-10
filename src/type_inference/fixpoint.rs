@@ -126,6 +126,12 @@ pub(crate) struct FixComputation<T, R> {
     pub(crate) partial_table: PartialTable<T, R>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Fixpoint<T, R> {
+    pub map: HashMap<T, R>,
+    pub deps: HashMap<T, Vec<T>>,
+}
+
 impl<T, R> Default for FixComputation<T, R> {
     fn default() -> Self {
         Self {
@@ -205,14 +211,18 @@ where
 pub fn compute_fixpoint<T, R>(
     alpha: T,
     tau: impl MonotoneTransform<T, Output = R>,
-) -> PartialTable<T, R>
+) -> Fixpoint<T, R>
 where
     T: PreOrder + Eq + Hash + Debug + Clone,
     R: PreOrder + Clone + LocalMinimum<T> + Debug,
 {
     let mut data: FixComputation<T, R> = FixComputation::default();
     data.repeat_computation(&alpha, &tau);
-    data.partial_table
+
+    Fixpoint {
+        map: data.partial_table.0,
+        deps: data.dependencies.0,
+    }
 }
 
 pub(crate) struct Factorial;
@@ -256,6 +266,6 @@ mod test {
     #[test]
     fn test_factorial() {
         let table = compute_fixpoint(4u64, Factorial);
-        assert_eq!(table.lookup(&4), Some(&24));
+        assert_eq!(table.map.get(&4), Some(&24));
     }
 }
