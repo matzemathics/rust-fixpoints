@@ -28,7 +28,7 @@ use super::{
 /// - empty, which is the bottom element, i. e. a table with no rows
 #[derive(Debug, Clone)]
 pub struct TypeTable<T> {
-    rows: Vec<Tup<T>>,
+    pub(super) rows: Vec<Tup<T>>,
 }
 
 impl<T: PreOrder> Bottom for TypeTable<T> {
@@ -73,7 +73,7 @@ impl<T> TypeTable<T> {
 }
 
 impl<T: Clone> TypeTable<T> {
-    fn add_row(&mut self, mut new_row: Tup<T>) -> bool
+    pub(super) fn add_row(&mut self, mut new_row: Tup<T>) -> bool
     where
         T: PartialOrd,
     {

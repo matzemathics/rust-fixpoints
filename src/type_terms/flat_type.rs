@@ -220,4 +220,15 @@ impl WildcardType {
             flat_type: FlatType::bot(),
         }
     }
+
+    pub fn wildcarded(flat_type: FlatType) -> Self {
+        WildcardType {
+            wildcard: true,
+            flat_type,
+        }
+    }
+
+    pub fn supports_wildcard(&self) -> bool {
+        self.wildcard
+    }
 }

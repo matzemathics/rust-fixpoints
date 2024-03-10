@@ -19,7 +19,7 @@ use crate::{
 
 use super::{
     const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NestedFunctor},
-    flat_type::TypeLike,
+    flat_type::{TypeLike, WildcardType},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -480,6 +480,67 @@ where
 
     fn interpret(builtin: NemoBuiltin, tup: Tup<Self>) -> Option<Tup<Self>> {
         todo!()
+    }
+}
+
+impl StructuredType<WildcardType> {
+    pub(crate) fn destruct_back_type(&self, ctor: &NemoCtor) -> Option<Vec<Self>> {
+        let func = match ctor {
+            NemoCtor::Aggregate => todo!(),
+            NemoCtor::Null(_) => todo!(),
+            NemoCtor::Functor(func) => func,
+        };
+
+        let TypeNode::TypeNode(start) = &self.start else {
+            return match func {
+                NemoFunctor::Double => Some(vec![]),
+                NemoFunctor::Const(_) => Some(vec![]),
+                NemoFunctor::Nested(nested) => {
+                    Some(repeat_with(Self::top).take(nested.arity()).collect())
+                }
+            };
+        };
+
+        let wildcard = start.flat_types.supports_wildcard();
+
+        let NemoFunctor::Nested(nested) = func else {
+            if start.flat_types.contains(func) || wildcard {
+                return Some(vec![]);
+            }
+
+            return None;
+        };
+
+        if !start.functors.contains(nested) {
+            if wildcard {
+                return Some(
+                    repeat_with(|| Self::from(WildcardType::wildcard()))
+                        .take(nested.arity())
+                        .collect(),
+                );
+            }
+            return None;
+        }
+
+        let subnodes = self
+            .grammar
+            .get(nested)
+            .expect("func is principal functor, so it must have a description");
+
+        let mut result = Vec::new();
+        for subnode in subnodes {
+            match subnode {
+                TypeNode::Any => result.push(Self::top()),
+
+                TypeNode::TypeNode(OrNode { functors, .. }) => {
+                    let grammar = self.grammar.sub_grammar(functors);
+                    let start = subnode.clone();
+                    result.push(Self { start, grammar });
+                }
+            }
+        }
+
+        Some(result)
     }
 }
 

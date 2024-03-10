@@ -6,9 +6,11 @@ use std::{
 use crate::{
     traits::lattice::Bottom,
     type_terms::{
+        const_model::NemoCtor,
         flat_type::{FlatType, WildcardType},
         structured_type::StructuredType,
     },
+    util::tup::Tup,
 };
 
 use super::{fixpoint::Recursor, type_table::TypeTable, TypeAnalysis};
@@ -41,7 +43,21 @@ where
         for clause in self.program.0.get(predicate).into_iter().flatten() {
             let joined = clause.execute_body(&self.config, &mut max_types);
             // reverse-destructure head -> frontier
-            let frontier: TypeTable<BackType> = (|_, _| todo!())(joined, &head);
+            let mut frontier: TypeTable<BackType> = TypeTable::empty();
+
+            for usage in &head.rows {
+                for produced in &joined.rows {
+                    let mut produced: Tup<_> = produced
+                        .iter()
+                        .map(|t| t.clone().map(WildcardType::wildcarded))
+                        .collect();
+
+                    if produced.generalized_unify(usage, &clause.head, BackType::destruct_back_type)
+                    {
+                        frontier.add_row(produced);
+                    }
+                }
+            }
 
             for atom in &clause.body_atoms {
                 // construct head -> matching

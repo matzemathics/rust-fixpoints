@@ -1,6 +1,9 @@
 use std::{borrow::Cow, cmp::Ordering};
 
-use crate::{traits::structural::TypeDomain, util::tup::Tup};
+use crate::{
+    traits::{lattice::Meet, structural::TypeDomain},
+    util::tup::Tup,
+};
 
 use super::model::{BodyTerm, HeadTerm};
 
@@ -44,6 +47,37 @@ impl<T: Clone> Tup<T> {
                     stack.extend(subterms.iter().zip(sub.into_iter().map(Cow::Owned)))
                 }
                 BodyTerm::DontCare => {}
+            }
+        }
+
+        true
+    }
+
+    pub(super) fn generalized_unify<F>(
+        &mut self,
+        other: &Self,
+        positions: &[HeadTerm<F>],
+        uncons: impl Fn(&T, &F) -> Option<Vec<T>>,
+    ) -> bool
+    where
+        T: Meet,
+    {
+        debug_assert_eq!(other.len(), positions.len());
+        let mut stack: Vec<_> = positions
+            .iter()
+            .zip(other.iter().map(Cow::Borrowed))
+            .collect();
+
+        while let Some((pos, t)) = stack.pop() {
+            match pos {
+                HeadTerm::Var(v) => self[*v as usize].meet_with(&t),
+                HeadTerm::Ctor(functor, subterms) => {
+                    let Some(sub) = uncons(&t, functor) else {
+                        return false;
+                    };
+
+                    stack.extend(subterms.iter().zip(sub.into_iter().map(Cow::Owned)))
+                }
             }
         }
 
