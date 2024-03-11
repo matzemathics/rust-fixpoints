@@ -13,13 +13,13 @@ use crate::{
         lattice::{Bottom, Meet, ThreeWayCompare, Top, Union},
         structural::TypeDomain,
     },
-    type_inference::Program,
+    type_inference::{model::BodyTerm, Program},
     util::tup::Tup,
 };
 
 use super::{
-    const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NestedFunctor},
-    flat_type::{TypeLike, WildcardType},
+    const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NestedFunctor, TermLike},
+    flat_type::{FlatType, TypeLike, WildcardType},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -376,7 +376,7 @@ where
 
 impl<Flat> TypeDomain for StructuredType<Flat>
 where
-    Flat: PartialOrd + Meet + Clone + Bottom + Eq + Union + TypeLike,
+    Flat: PartialOrd + Meet + Clone + Bottom + Eq + Union + TypeLike + From<FlatType>,
 {
     type Builtin = NemoBuiltin;
     type Functor = NemoFunctor;
@@ -479,7 +479,16 @@ where
     }
 
     fn interpret(builtin: NemoBuiltin, tup: Tup<Self>) -> Option<Tup<Self>> {
-        todo!()
+        match builtin {
+            NemoBuiltin::Import(v) => {
+                let mapped: Tup<_> = v.into_iter()
+                    .map(|t| Self::from(Flat::from(t)))
+                    .collect();
+
+                let positions: Vec<_> = (0..mapped.len() as u16).map(BodyTerm::Var).collect::<_>();
+                tup.unify(&mapped, &positions)
+            }
+        }
     }
 }
 

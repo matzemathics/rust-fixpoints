@@ -19,7 +19,7 @@ pub(super) enum UnionResult {
 }
 
 impl<T: Clone> Tup<T> {
-    pub(super) fn unify(mut self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> Option<Self>
+    pub(crate) fn unify(mut self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> Option<Self>
     where
         T: TypeDomain,
     {

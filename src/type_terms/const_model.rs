@@ -1,5 +1,9 @@
 use std::{fmt::Debug, sync::Arc};
 
+use crate::type_inference::model::{BodyTerm, HeadTerm};
+
+use super::flat_type::FlatType;
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum NemoFunctor {
     Double,
@@ -71,4 +75,34 @@ pub type MapKey = Arc<str>;
 pub type TermTag = Arc<str>;
 
 #[derive(Clone)]
-pub enum NemoBuiltin {}
+pub enum NemoBuiltin {
+    Import(Vec<FlatType>)
+}
+
+pub trait TermLike: Sized {
+    fn constant(f: IdentConstant) -> Self;
+    fn variable(i: u16) -> Self;
+}
+
+impl TermLike for HeadTerm<NemoCtor> {
+    fn constant(c: IdentConstant) -> Self {
+        HeadTerm::Ctor(NemoCtor::Functor(NemoFunctor::Const(c)), vec![])
+    }
+
+    fn variable(i: u16) -> Self {
+        HeadTerm::Var(i)
+    }
+}
+
+impl TermLike for BodyTerm<NemoFunctor> {
+    fn constant(c: IdentConstant) -> Self {
+        BodyTerm::Functor {
+            functor: NemoFunctor::Const(c),
+            subterms: vec![],
+        }
+    }
+
+    fn variable(i: u16) -> Self {
+        BodyTerm::Var(i)
+    }
+}

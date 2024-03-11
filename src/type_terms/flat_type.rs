@@ -136,13 +136,13 @@ prod_lattice! {
 }
 
 impl FlatType {
-    pub(crate) fn int() -> Self {
+    pub fn int() -> Self {
         let mut res = Self::bot();
         res.integer = IntType::top();
         res
     }
 
-    pub(crate) fn str() -> Self {
+    pub fn str() -> Self {
         let mut res = Self::bot();
         res.string = ToppedLattice::top();
         res
