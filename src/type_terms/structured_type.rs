@@ -3,7 +3,6 @@ use std::{
     cmp::Ordering,
     collections::{hash_map, HashMap, HashSet},
     fmt::Debug,
-    hash::Hash,
     iter::repeat_with,
     vec,
 };
@@ -18,7 +17,7 @@ use crate::{
 };
 
 use super::{
-    const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NestedFunctor, TermLike},
+    const_model::{NemoBuiltin, NemoCtor, NemoFunctor, NestedFunctor},
     flat_type::{FlatType, TypeLike, WildcardType},
 };
 
@@ -390,7 +389,7 @@ where
         StructuredTypeConfig {}
     }
 
-    fn init(config: Self::Config) -> Self {
+    fn init(_config: Self::Config) -> Self {
         let start = TypeNode::TypeNode(OrNode {
             flat_types: Flat::bot(),
             functors: HashSet::new(),
@@ -441,7 +440,7 @@ where
         Some(result)
     }
 
-    fn cons(config: &Self::Config, ctor: NemoCtor, subterms: Vec<Self>) -> Option<Self> {
+    fn cons(_config: &Self::Config, ctor: NemoCtor, subterms: Vec<Self>) -> Option<Self> {
         let ctor = match ctor {
             NemoCtor::Aggregate => todo!(),
             NemoCtor::Null(_) => todo!(),

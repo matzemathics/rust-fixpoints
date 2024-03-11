@@ -2,7 +2,7 @@ use std::iter::repeat_with;
 
 use crate::{
     traits::{
-        lattice::{Bottom, Meet, PreOrder, Top},
+        lattice::{Bottom, PreOrder, Top},
         structural::TypeDomain,
     },
     util::tup::Tup,
