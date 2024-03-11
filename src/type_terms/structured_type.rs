@@ -480,9 +480,7 @@ where
     fn interpret(builtin: NemoBuiltin, tup: Tup<Self>) -> Option<Tup<Self>> {
         match builtin {
             NemoBuiltin::Import(v) => {
-                let mapped: Tup<_> = v.into_iter()
-                    .map(|t| Self::from(Flat::from(t)))
-                    .collect();
+                let mapped: Tup<_> = v.into_iter().map(|t| Self::from(Flat::from(t))).collect();
 
                 let positions: Vec<_> = (0..mapped.len() as u16).map(BodyTerm::Var).collect::<_>();
                 tup.unify(&mapped, &positions)

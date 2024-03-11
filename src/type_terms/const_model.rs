@@ -76,7 +76,7 @@ pub type TermTag = Arc<str>;
 
 #[derive(Clone)]
 pub enum NemoBuiltin {
-    Import(Vec<FlatType>)
+    Import(Vec<FlatType>),
 }
 
 pub trait TermLike: Sized {

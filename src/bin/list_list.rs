@@ -1,7 +1,6 @@
 use fixpoints::{
     type_inference::{
-        backwards,
-        fixpoint::{compute_fixpoint, MonotoneTransform},
+        fixpoint::compute_fixpoint,
         model::{BodyAtom, BodyTerm, HeadTerm, PatClause},
         Program,
     },

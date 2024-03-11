@@ -5,7 +5,7 @@ use fixpoints::{
         Program,
     },
     type_terms::{
-        const_model::{IdentConstant, NemoBuiltin, NemoFunctor, NestedFunctor, TermLike},
+        const_model::{IdentConstant, NemoBuiltin, TermLike},
         flat_type::FlatType,
         structured_type::StructuredType,
     },
@@ -32,15 +32,18 @@ fn main() {
     };
 
     // import p(int, str).
-    program.add_rule("p", PatClause {
-        head: vec![var(0), var(1)],
-        body_atoms: vec![],
-        body_builtins: vec![BodyBuiltin {
-            builtin: NemoBuiltin::Import(vec![FlatType::int(), FlatType::str()]),
-            terms: vec![var(0), var(1)]
-        }],
-        body_variables: 2
-    });
+    program.add_rule(
+        "p",
+        PatClause {
+            head: vec![var(0), var(1)],
+            body_atoms: vec![],
+            body_builtins: vec![BodyBuiltin {
+                builtin: NemoBuiltin::Import(vec![FlatType::int(), FlatType::str()]),
+                terms: vec![var(0), var(1)],
+            }],
+            body_variables: 2,
+        },
+    );
 
     // a(1, "test")
     // a(2, 3)

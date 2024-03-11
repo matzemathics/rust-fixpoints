@@ -1,12 +1,11 @@
 use fixpoints::{
     type_inference::{
-        backwards,
         fixpoint::compute_fixpoint,
-        model::{BodyAtom, BodyTerm, HeadTerm, PatClause},
+        model::{BodyAtom, BodyTerm, PatClause},
         Program,
     },
     type_terms::{
-        const_model::{IdentConstant, NemoCtor, NemoFunctor, NestedFunctor, TermLike},
+        const_model::{IdentConstant, NemoFunctor, NestedFunctor, TermLike},
         flat_type::FlatType,
         structured_type::StructuredType,
     },
@@ -14,8 +13,8 @@ use fixpoints::{
 
 fn main() {
     let mut program = Program::new();
-    let nil = NemoFunctor::Const(IdentConstant::IriConst("<nil>".into()));
-    let cons = NemoFunctor::Nested(NestedFunctor::List {
+    let _nil = NemoFunctor::Const(IdentConstant::IriConst("<nil>".into()));
+    let _cons = NemoFunctor::Nested(NestedFunctor::List {
         tag: Some("::".into()),
         length: 2,
     });
