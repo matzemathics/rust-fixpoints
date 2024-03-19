@@ -1,14 +1,12 @@
 use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
+    collections::{HashMap, HashSet}, fmt::Debug, hash::Hash
 };
 
 use crate::{
-    type_terms::{
+    traits::lattice::Bottom, type_terms::{
         flat_type::{FlatType, WildcardType},
         structured_type::StructuredType,
-    },
-    util::tup::Tup,
+    }, util::tup::Tup
 };
 
 use super::{fixpoint::Recursor, type_table::TypeTable, TypeAnalysis};
@@ -24,7 +22,7 @@ impl<K: Eq + Hash, V> Recursor<K, V> for &HashMap<K, V> {
 
 impl<P> TypeAnalysis<P, StructuredType<FlatType>>
 where
-    P: Eq + Hash + Clone,
+    P: Eq + Hash + Clone + Debug,
 {
     fn backprop(
         &self,
@@ -35,8 +33,8 @@ where
         let mut changed = HashSet::new();
         let head = result
             .get(predicate)
-            .expect("backprop called with non-existent predicate")
-            .clone();
+            .cloned()
+            .unwrap_or(TypeTable::empty());
 
         for clause in self.program.0.get(predicate).into_iter().flatten() {
             let joined = clause.execute_body(&self.config, &mut max_types);
@@ -94,18 +92,7 @@ where
 
         while let Some(p) = work.pop() {
             let updated = self.backprop(&forward, &mut result, &p);
-
-            for changed in updated {
-                let dependent = dg
-                    .get(&changed)
-                    .into_iter()
-                    .flatten()
-                    .filter(|p| !work.contains(&p))
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                work.extend(dependent)
-            }
+            work.extend(updated);
         }
 
         result

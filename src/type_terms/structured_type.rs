@@ -344,7 +344,7 @@ where
         left_grammar.union_with(self.grammar.sub_grammar(&discovered_left));
         left_grammar.union_with(other.grammar.sub_grammar(&discovered_right));
         for (f, node) in left_grammar.rules {
-            rules.insert(dbg!(f), node);
+            rules.insert(f, node);
         }
 
         let mut rhs_functors: HashSet<_> = rules

@@ -82,6 +82,7 @@ pub enum NemoBuiltin {
 pub trait TermLike: Sized {
     fn constant(f: IdentConstant) -> Self;
     fn variable(i: u16) -> Self;
+    fn functor(s: Arc<str>, v: Vec<Self>) -> Self;
 }
 
 impl TermLike for HeadTerm<NemoCtor> {
@@ -91,6 +92,10 @@ impl TermLike for HeadTerm<NemoCtor> {
 
     fn variable(i: u16) -> Self {
         HeadTerm::Var(i)
+    }
+    
+    fn functor(s: Arc<str>, v: Vec<Self>) -> Self {
+        HeadTerm::Ctor( NemoCtor::Functor(NemoFunctor::Nested(NestedFunctor::List { tag: Some(s), length: v.len() })), v)
     }
 }
 
@@ -104,5 +109,12 @@ impl TermLike for BodyTerm<NemoFunctor> {
 
     fn variable(i: u16) -> Self {
         BodyTerm::Var(i)
+    }
+    
+    fn functor(s: Arc<str>, v: Vec<Self>) -> Self {
+        BodyTerm::Functor {
+            functor: NemoFunctor::Nested(NestedFunctor::List { tag: Some(s), length: v.len() }),
+            subterms: v
+        }
     }
 }
