@@ -1,12 +1,12 @@
 use fixpoints::{
     type_inference::{
         fixpoint::compute_fixpoint,
-        model::{BodyAtom, BodyBuiltin, BodyTerm, HeadTerm, PatClause},
+        model::{BodyAtom, BodyBuiltin, BodyTerm, PatClause},
         Program,
     },
     type_terms::{
-        const_model::{IdentConstant, NemoBuiltin, NemoCtor, TermLike},
-        flat_type::{FlatType, WildcardType},
+        const_model::{IdentConstant, NemoBuiltin, TermLike},
+        flat_type::FlatType,
         structured_type::StructuredType,
     },
 };
