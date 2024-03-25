@@ -28,7 +28,7 @@ use super::{
 /// - empty, which is the bottom element, i. e. a table with no rows
 #[derive(Debug, Clone)]
 pub struct TypeTable<T> {
-    pub(super) rows: Vec<Tup<T>>,
+    pub(crate) rows: Vec<Tup<T>>,
 }
 
 impl<T: PreOrder> Bottom for TypeTable<T> {

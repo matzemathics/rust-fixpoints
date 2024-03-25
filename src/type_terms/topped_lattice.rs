@@ -96,4 +96,8 @@ impl<T: Hash + Eq> ToppedLattice<T> {
 
         inner.insert(it)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter().flatten()
+    }
 }

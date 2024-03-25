@@ -23,8 +23,8 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructuredType<Flat> {
-    start: TypeNode<Flat>,
-    grammar: TypeGrammar<Flat>,
+    pub(crate) start: TypeNode<Flat>,
+    pub(crate) grammar: TypeGrammar<Flat>,
 }
 
 impl<Flat: Clone + Eq + Union> From<Flat> for StructuredType<Flat> {
@@ -67,7 +67,7 @@ impl<Flat> StructuredType<Flat> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-enum TypeNode<Flat> {
+pub(crate) enum TypeNode<Flat> {
     Any,
     TypeNode(OrNode<Flat>),
 }
@@ -82,9 +82,9 @@ impl<Flat: Debug> Debug for TypeNode<Flat> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct OrNode<Flat> {
-    flat_types: Flat,
-    functors: HashSet<NestedFunctor>,
+pub(crate) struct OrNode<Flat> {
+    pub(crate) flat_types: Flat,
+    pub(crate) functors: HashSet<NestedFunctor>,
 }
 
 impl<Flat: Debug> Debug for OrNode<Flat> {
@@ -161,8 +161,8 @@ impl<Flat> TypeNode<Flat> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct TypeGrammar<Flat> {
-    rules: HashMap<NestedFunctor, Vec<TypeNode<Flat>>>,
+pub(crate) struct TypeGrammar<Flat> {
+    pub(crate) rules: HashMap<NestedFunctor, Vec<TypeNode<Flat>>>,
 }
 
 impl<Flat: Debug> Debug for TypeGrammar<Flat> {

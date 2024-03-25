@@ -52,6 +52,7 @@ pub enum IdentConstant {
     StrConst(StrConst),
     IntConst(IntConst),
     IriConst(IriConst),
+    BoolConst(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +84,7 @@ pub trait TermLike: Sized {
     fn constant(f: IdentConstant) -> Self;
     fn variable(i: u16) -> Self;
     fn functor(s: Arc<str>, v: Vec<Self>) -> Self;
+    fn wildcard() -> Option<Self>;
 }
 
 impl TermLike for HeadTerm<NemoCtor> {
@@ -96,6 +98,10 @@ impl TermLike for HeadTerm<NemoCtor> {
     
     fn functor(s: Arc<str>, v: Vec<Self>) -> Self {
         HeadTerm::Ctor( NemoCtor::Functor(NemoFunctor::Nested(NestedFunctor::List { tag: Some(s), length: v.len() })), v)
+    }
+
+    fn wildcard() -> Option<Self> {
+        None
     }
 }
 
@@ -116,5 +122,9 @@ impl TermLike for BodyTerm<NemoFunctor> {
             functor: NemoFunctor::Nested(NestedFunctor::List { tag: Some(s), length: v.len() }),
             subterms: v
         }
+    }
+    
+    fn wildcard() -> Option<Self> {
+        Some(BodyTerm::DontCare)
     }
 }

@@ -9,11 +9,11 @@ use super::{
 
 macro_rules! prod_lattice {
     {
-        $vis:vis struct $ty_id:ident { $($key:ident: $key_ty:ty,)* }
+        $vis:vis struct $ty_id:ident { $($k_vis:vis $key:ident: $key_ty:ty,)* }
     } => {
         #[derive(Clone, PartialEq, Eq)]
         $vis struct $ty_id {
-            $($key: $key_ty,)*
+            $($k_vis $key: $key_ty,)*
         }
 
         impl Debug for $ty_id {
@@ -123,15 +123,16 @@ impl IntType {
 
 prod_lattice! {
     pub struct FlatType {
-        string: ToppedLattice<Arc<str>>,
-        iri: ToppedLattice<Arc<str>>,
-        language_tagged_string: bool,
-        float: bool,
-        double: bool,
-        integer: IntType,
-        boolean: bool,
-        null: bool,
-        other: bool,
+        pub(crate) string: ToppedLattice<Arc<str>>,
+        pub(crate) iri: ToppedLattice<Arc<str>>,
+        pub(crate) language_tagged_string: bool,
+        pub(crate) float: bool,
+        pub(crate) double: bool,
+        pub(crate) integer: IntType,
+        pub(crate) true_const: bool,
+        pub(crate) false_const: bool,
+        pub(crate) null: bool,
+        pub(crate) other: bool,
     }
 }
 
@@ -149,6 +150,12 @@ impl FlatType {
     }
 }
 
+impl IntType {
+    pub fn constants(&self) -> impl Iterator<Item = i64> + '_ {
+        self.positive31.iter().chain(self.negative31.iter()).cloned()
+    }
+}
+
 pub trait TypeLike {
     fn contains(&self, val: &NemoFunctor) -> bool;
     fn from_constant(val: NemoFunctor) -> Self;
@@ -161,6 +168,8 @@ impl TypeLike for FlatType {
             NemoFunctor::Const(IdentConstant::IntConst(i)) => self.integer.contains(*i),
             NemoFunctor::Const(IdentConstant::StrConst(s)) => self.string.subsumes(s),
             NemoFunctor::Const(IdentConstant::IriConst(iri)) => self.iri.subsumes(iri),
+            NemoFunctor::Const(IdentConstant::BoolConst(true)) => self.true_const,
+            NemoFunctor::Const(IdentConstant::BoolConst(false)) => self.false_const,
             NemoFunctor::Nested(_) => unimplemented!(),
         }
     }
@@ -177,6 +186,8 @@ impl TypeLike for FlatType {
             NemoFunctor::Const(IdentConstant::IriConst(iri)) => {
                 result.iri.insert(iri);
             }
+            NemoFunctor::Const(IdentConstant::BoolConst(true)) => result.true_const = true,
+            NemoFunctor::Const(IdentConstant::BoolConst(false)) => result.false_const = true,
             NemoFunctor::Nested(_) => unimplemented!(),
         }
 
@@ -186,8 +197,8 @@ impl TypeLike for FlatType {
 
 prod_lattice! {
     pub struct WildcardType {
-        wildcard: bool,
-        flat_type: FlatType,
+        pub(crate) wildcard: bool,
+        pub(crate) flat_type: FlatType,
     }
 }
 
