@@ -2,11 +2,36 @@ from fixpoints import *
 from arpeggio import Optional, ZeroOrMore, OneOrMore, EOF, ParserPython, PTNodeVisitor, visit_parse_tree
 from arpeggio import RegExMatch as _
 
+rule_file = """
+b(4, 1).
+
+a(1, ?m) :- b(_, ?m).
+
+n(?x) :- import(str).
+c(?x) :- a(?x, _), n(?x).
+
+c(?x) :- import(int).
+c(?x) :- a(?x, ?x).
+
+c(42) :- a(_, g(?x)).
+
+export c.
+"""
+
+line_breaks = [idx for idx, char in enumerate(rule_file) if char == '\n']
+def line_position(pos):
+    line_offset = max(filter(lambda x: x<pos, line_breaks), default=0)
+
+    column = pos - line_offset
+    line = line_breaks.index(line_offset)
+    return line, column
+
 def identifier(): return _(r'[a-zA-Z]')
 def pvar(): return "?", identifier
 def pnum(): return _(r'\d*')
 def pwildcard(): return "_"
-def pterm(): return [pvar, pnum, pwildcard]
+def pfunct(): return identifier, "(", pterm, ZeroOrMore((",", pterm)), ")"
+def pterm(): return [pvar, pnum, pwildcard, pfunct]
 def patom(): return identifier, "(", pterm, ZeroOrMore((",", pterm)), ")"
 def ptype(): return ["str", "int"]
 def pimport(): return "import", "(", OneOrMore(ptype), ")"
@@ -37,6 +62,10 @@ class ProgramVisitor(PTNodeVisitor):
 
         return var(new_index)
 
+    def visit_pfunct(self, node, children):
+        fun_sym, *terms = children
+        return functor(fun_sym, terms)
+
     def visit_pwildcard(self, node, chlildren):
         return wildcard()
 
@@ -66,7 +95,7 @@ class ProgramVisitor(PTNodeVisitor):
             "variables": var_map,
             "head": head,
             "body": body,
-            "flat": input[node.position:node.position_end],
+            "flat": rule_file[node.position:node.position_end],
             "position": (node.position, node.position_end)
         }
     
@@ -74,13 +103,41 @@ class ProgramVisitor(PTNodeVisitor):
         return { "export": children[0] }
 
     def second_prule(self, result):
+        if self.fw is None :
+            return
+
         if result["body"] == []:
             return
 
         typ_info, fails = execute_body(self.fw, result["body"])
         for fail in fails:
             if type(fail) == MeetFailure:
-                print(f'incompatible types in rule {result["flat"]}')
+                line, column = line_position(result["position"][0])
+                atoms = [a.predicate for a in result["body"][:fail.position+1]]
+                print(f'\nLine {line}: Body atoms {atoms} are incompatible.')
+                offset = len(str(line))
+                print(" " * offset + " | ")
+                print(f"{line} | {result['flat']}")
+                print(" " * offset + " | ")
+
+                [var] = [
+                    v for v in result["variables"]
+                    if result["variables"][v]["index"] == fail.variable
+                ]
+
+                print(f'Type of variable ?{var} is empty.')
+                print(f'The types {fail.lhs.jungle().start} and {fail.rhs.jungle().start} are disjoint.')
+
+            elif type(fail) == DeconstructFailure:
+                line, column = line_position(result["position"][0])
+                print(f'\nLine {line}: Impossible pattern for {repr(fail.predicate)} found.')
+                offset = len(str(line))
+                print(" " * offset + " | ")
+                print(f"{line} | {result['flat']}")
+                print(" " * offset + " | ")
+                print(f'The pattern "{fail.pattern}" fails inside {repr(fail.predicate)}, '
+                        + f'the inferred type is {fail.inferred.jungle().start}')
+
 
     def visit_program(self, node, children):
         print("Performing analysis...")
@@ -97,21 +154,7 @@ class ProgramVisitor(PTNodeVisitor):
 
 rule_parser = ParserPython(program)
 
-input = """
-b(4, 1).
-
-a(1, ?m) :- b(_, ?m).
-
-n(?x) :- import(str).
-c(?x) :- a(?x, _), n(?x).
-
-c(?x) :- import(int).
-c(?x) :- a(?x, ?x).
-
-export c.
-"""
-
-parse_tree = rule_parser.parse(input)
+parse_tree = rule_parser.parse(rule_file)
 visit_parse_tree(parse_tree, ProgramVisitor())
 
 # for rule in result:

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use pyo3::{
     exceptions::PyTypeError,
     prelude::*,
-    types::{PyDict, PySet},
+    types::{PyDict, PySet, PyString},
 };
 
 use crate::{
@@ -33,7 +33,9 @@ use crate::type_terms::{
 #[pyclass]
 #[derive(Debug, Clone)]
 struct Atom {
+    #[pyo3(get)]
     predicate: String,
+    #[pyo3(get)]
     terms: Vec<PyObject>,
 }
 
@@ -220,30 +222,42 @@ struct AnyNode;
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct Functor(String);
 
+#[pymethods]
+impl Functor {
+    fn __repr__(&self) -> String {
+        format!("{}(...)", self.0)
+    }
+}
+
 #[pyclass]
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct PyStringType;
+
+#[pymethods]
+impl PyStringType {
+    fn __repr__(&self) -> String {
+        "str".into()
+    }
+}
 
 #[pyclass]
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct PyIntType;
 
+#[pymethods]
+impl PyIntType {
+    fn __repr__(&self) -> String {
+        "int".into()
+    }
+}
+
 #[pyclass]
 #[derive(Debug, Clone)]
 struct Jungle {
+    #[pyo3(get)]
     start: PyObject,
+    #[pyo3(get)]
     rules: PyObject,
-}
-
-#[pymethods]
-impl Jungle {
-    fn start(&self) -> &PyObject {
-        &self.start
-    }
-
-    fn rules(&self) -> &PyObject {
-        &self.rules
-    }
 }
 
 impl ToPyObject for Jungle {
@@ -326,6 +340,29 @@ impl FwTyp {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
+
+    fn jungle(&self, py: Python<'_>) -> PyResult<Jungle> {
+        let dict = PyDict::new(py);
+
+        for (fun, nodes) in &self.0.grammar.rules {
+            let nodes: Vec<_> = nodes
+                .iter()
+                .map(|node| flat_node_to_py(py, node.clone()))
+                .collect::<Result<_, _>>()?;
+
+            match fun {
+                NestedFunctor::Map { tag, keys } => unimplemented!(),
+                NestedFunctor::List { tag, length } => {
+                    dict.set_item(tag.clone().unwrap().to_string(), nodes)?;
+                }
+            }
+        }
+
+        Ok(Jungle {
+            start: flat_node_to_py(py, self.0.start.clone())?,
+            rules: dict.into_py(py),
+        })
+    }
 }
 
 #[pyclass]
@@ -336,6 +373,29 @@ struct BwTyp(StructuredType<WildcardType>);
 impl BwTyp {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
+    }
+
+    fn jungle(&self, py: Python<'_>) -> PyResult<Jungle> {
+        let dict = PyDict::new(py);
+
+        for (fun, nodes) in &self.0.grammar.rules {
+            let nodes: Vec<_> = nodes
+                .iter()
+                .map(|node| wildcard_node_to_py(py, node.clone()))
+                .collect::<Result<_, _>>()?;
+
+            match fun {
+                NestedFunctor::Map { tag, keys } => unimplemented!(),
+                NestedFunctor::List { tag, length } => {
+                    dict.set_item(tag.clone().unwrap().to_string(), nodes)?;
+                }
+            }
+        }
+
+        Ok(Jungle {
+            start: wildcard_node_to_py(py, self.0.start.clone())?,
+            rules: dict.into_py(py),
+        })
     }
 }
 
@@ -367,60 +427,6 @@ fn wildcard_node_to_py(py: Python<'_>, node: TypeNode<WildcardType>) -> PyResult
             functors.extend(wildcard_type_to_py(py, flat_types));
             Ok(PySet::new(py, &functors)?.into_py(py))
         }
-    }
-}
-
-trait Jungable {
-    fn make_jungle(self, py: Python<'_>) -> PyResult<Jungle>;
-}
-
-impl Jungable for StructuredType<FlatType> {
-    fn make_jungle(self, py: Python<'_>) -> PyResult<Jungle> {
-        let dict = PyDict::new(py);
-
-        for (fun, nodes) in &self.grammar.rules {
-            let nodes: Vec<_> = nodes
-                .iter()
-                .map(|node| flat_node_to_py(py, node.clone()))
-                .collect::<Result<_, _>>()?;
-
-            match fun {
-                NestedFunctor::Map { tag, keys } => unimplemented!(),
-                NestedFunctor::List { tag, length } => {
-                    dict.set_item(tag.clone().unwrap().to_string(), nodes)?;
-                }
-            }
-        }
-
-        Ok(Jungle {
-            start: flat_node_to_py(py, self.start)?,
-            rules: dict.into_py(py),
-        })
-    }
-}
-
-impl Jungable for StructuredType<WildcardType> {
-    fn make_jungle(self, py: Python<'_>) -> PyResult<Jungle> {
-        let dict = PyDict::new(py);
-
-        for (fun, nodes) in &self.grammar.rules {
-            let nodes: Vec<_> = nodes
-                .iter()
-                .map(|node| wildcard_node_to_py(py, node.clone()))
-                .collect::<Result<_, _>>()?;
-
-            match fun {
-                NestedFunctor::Map { tag, keys } => unimplemented!(),
-                NestedFunctor::List { tag, length } => {
-                    dict.set_item(tag.clone().unwrap().to_string(), nodes)?;
-                }
-            }
-        }
-
-        Ok(Jungle {
-            start: wildcard_node_to_py(py, self.start)?,
-            rules: dict.into_py(py),
-        })
     }
 }
 
@@ -501,7 +507,7 @@ struct DeconstructFailure {
     #[pyo3(get)]
     inferred: FwTyp,
     #[pyo3(get)]
-    pattern: (String, usize),
+    pattern: PyObject,
     #[pyo3(get)]
     path: Vec<usize>,
 }
@@ -519,6 +525,7 @@ enum Failure {
 }
 
 fn exec_body(
+    py: Python<'_>,
     fw: ResultMap<FwTyp>,
     body: Body,
 ) -> Result<TypeTable<StructuredType<FlatType>>, Vec<Failure>> {
@@ -559,8 +566,14 @@ fn exec_body(
                                 predicate: predicate.clone(),
                                 inferred: FwTyp(typ),
                                 pattern: match pattern {
-                                    NemoFunctor::Nested(NestedFunctor::List { tag, length }) => {
-                                        (String::from(&tag.unwrap() as &str), length)
+                                    NemoFunctor::Nested(NestedFunctor::List { tag, .. }) => {
+                                        Functor(tag.unwrap().to_string()).into_py(py)
+                                    }
+                                    NemoFunctor::Const(IdentConstant::IntConst(num)) => {
+                                        num.into_py(py)
+                                    }
+                                    NemoFunctor::Const(IdentConstant::StrConst(sconst)) => {
+                                        sconst.into_py(py)
                                     }
                                     _ => unimplemented!(),
                                 },
@@ -588,7 +601,7 @@ fn execute_body(
 ) -> PyResult<(Vec<Vec<FwTyp>>, Vec<PyObject>)> {
     let body = mk_body(py, body)?;
 
-    let table = match exec_body(typ_result, body) {
+    let table = match exec_body(py, typ_result, body) {
         Ok(table) => table,
         Err(failures) => {
             let failures = failures
