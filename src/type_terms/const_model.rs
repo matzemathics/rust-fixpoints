@@ -75,7 +75,7 @@ pub type NullGenerator = usize;
 pub type MapKey = Arc<str>;
 pub type TermTag = Arc<str>;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum NemoBuiltin {
     Import(Vec<FlatType>),
 }
@@ -95,9 +95,15 @@ impl TermLike for HeadTerm<NemoCtor> {
     fn variable(i: u16) -> Self {
         HeadTerm::Var(i)
     }
-    
+
     fn functor(s: Arc<str>, v: Vec<Self>) -> Self {
-        HeadTerm::Ctor( NemoCtor::Functor(NemoFunctor::Nested(NestedFunctor::List { tag: Some(s), length: v.len() })), v)
+        HeadTerm::Ctor(
+            NemoCtor::Functor(NemoFunctor::Nested(NestedFunctor::List {
+                tag: Some(s),
+                length: v.len(),
+            })),
+            v,
+        )
     }
 
     fn wildcard() -> Option<Self> {
@@ -116,14 +122,17 @@ impl TermLike for BodyTerm<NemoFunctor> {
     fn variable(i: u16) -> Self {
         BodyTerm::Var(i)
     }
-    
+
     fn functor(s: Arc<str>, v: Vec<Self>) -> Self {
         BodyTerm::Functor {
-            functor: NemoFunctor::Nested(NestedFunctor::List { tag: Some(s), length: v.len() }),
-            subterms: v
+            functor: NemoFunctor::Nested(NestedFunctor::List {
+                tag: Some(s),
+                length: v.len(),
+            }),
+            subterms: v,
         }
     }
-    
+
     fn wildcard() -> Option<Self> {
         Some(BodyTerm::DontCare)
     }

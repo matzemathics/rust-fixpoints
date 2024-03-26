@@ -16,4 +16,6 @@ pub trait TypeDomain: Top + Meet + Clone + PartialOrd {
     fn uncons(&self, func: &Self::Functor) -> Option<Vec<Self>>;
 
     fn interpret(builtin: Self::Builtin, tup: Tup<Self>) -> Option<Tup<Self>>;
+
+    fn is_empty(&self) -> bool;
 }

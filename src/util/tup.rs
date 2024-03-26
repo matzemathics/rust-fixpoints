@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use crate::traits::lattice::PreOrder;
 
 #[derive(Debug, Clone)]
-pub struct Tup<T>(Box<[T]>);
+pub struct Tup<T>(pub(crate) Box<[T]>);
 
 impl<T> Deref for Tup<T> {
     type Target = [T];

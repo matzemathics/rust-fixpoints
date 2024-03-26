@@ -10,7 +10,7 @@ use crate::{
 
 use super::{
     model::{BodyTerm, HeadTerm},
-    tup::UnionResult,
+    tup::{UnificationFailure, UnionResult},
 };
 
 /// A table of incomparable tuples of types, i. e.
@@ -46,7 +46,7 @@ impl<T: PreOrder> PreOrder for TypeTable<T> {
 }
 
 impl<T: Clone> TypeTable<T> {
-    pub(super) fn new(width: u16) -> TypeTable<T>
+    pub(crate) fn new(width: u16) -> TypeTable<T>
     where
         T: Top,
     {
@@ -135,7 +135,11 @@ impl<T: Clone> TypeTable<T> {
     // computes the meet of self with other
     // other[i] is unified with positions[i](self)
     // this might increase the number of rows quadratically
-    pub(super) fn meet(&self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> Self
+    pub(crate) fn meet(
+        &self,
+        other: &Self,
+        positions: &[BodyTerm<T::Functor>],
+    ) -> Result<Self, Vec<UnificationFailure<T>>>
     where
         T: TypeDomain,
     {
@@ -143,15 +147,24 @@ impl<T: Clone> TypeTable<T> {
             rows: Vec::default(),
         };
 
+        let mut failures = Vec::new();
+
         for row in &self.rows {
             for other_row in &other.rows {
-                if let Some(new_row) = row.clone().unify(other_row, positions) {
-                    result.add_row(new_row);
+                match row.clone().unify(other_row, positions) {
+                    Ok(new_row) => {
+                        result.add_row(new_row);
+                    }
+                    Err(failure) => failures.push(failure),
                 }
             }
         }
 
-        result
+        if result.rows.len() == 0 {
+            return Err(failures);
+        }
+
+        Ok(result)
     }
 }
 
@@ -187,7 +200,7 @@ impl<T: TypeDomain> TypeTable<T> {
 }
 
 impl<T: TypeDomain> TypeTable<T> {
-    pub(super) fn apply_builtin(
+    pub(crate) fn apply_builtin(
         &mut self,
         config: &T::Config,
         builtin: &T::Builtin,
@@ -202,7 +215,7 @@ impl<T: TypeDomain> TypeTable<T> {
                 continue;
             };
 
-            if row.unify_with(&assignment, shape) {
+            if row.unify_with(&assignment, shape).is_ok() {
                 self.add_row(row);
             }
         }

@@ -1,12 +1,16 @@
 use std::{
-    collections::{HashMap, HashSet}, fmt::Debug, hash::Hash
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    hash::Hash,
 };
 
 use crate::{
-    traits::lattice::Bottom, type_terms::{
+    traits::lattice::Bottom,
+    type_terms::{
         flat_type::{FlatType, WildcardType},
         structured_type::StructuredType,
-    }, util::tup::Tup
+    },
+    util::tup::Tup,
 };
 
 use super::{fixpoint::Recursor, type_table::TypeTable, TypeAnalysis};
@@ -31,13 +35,12 @@ where
         predicate: &P,
     ) -> impl Iterator<Item = P> {
         let mut changed = HashSet::new();
-        let head = result
-            .get(predicate)
-            .cloned()
-            .unwrap_or(TypeTable::empty());
+        let head = result.get(predicate).cloned().unwrap_or(TypeTable::empty());
 
         for clause in self.program.0.get(predicate).into_iter().flatten() {
-            let joined = clause.execute_body(&self.config, &mut max_types);
+            let joined = clause
+                .execute_body(&self.config, &mut max_types)
+                .unwrap_or(TypeTable::empty());
             // reverse-destructure head -> frontier
             let mut frontier: TypeTable<BackType> = TypeTable::empty();
 

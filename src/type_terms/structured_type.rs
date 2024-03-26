@@ -483,9 +483,17 @@ where
                 let mapped: Tup<_> = v.into_iter().map(|t| Self::from(Flat::from(t))).collect();
 
                 let positions: Vec<_> = (0..mapped.len() as u16).map(BodyTerm::Var).collect::<_>();
-                tup.unify(&mapped, &positions)
+                tup.unify(&mapped, &positions).ok()
             }
         }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.start
+            == TypeNode::TypeNode(OrNode {
+                flat_types: Flat::bot(),
+                functors: HashSet::new(),
+            })
     }
 }
 

@@ -18,15 +18,37 @@ pub(super) enum UnionResult {
     Incomparable,
 }
 
+pub(crate) enum UnificationFailure<T: TypeDomain> {
+    Incomparable {
+        variable: u16,
+        path: Vec<usize>,
+        left: T,
+        right: T,
+    },
+    Deconstruct {
+        path: Vec<usize>,
+        typ: T,
+        pattern: T::Functor,
+    },
+}
+
 impl<T: Clone> Tup<T> {
-    pub(crate) fn unify(mut self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> Option<Self>
+    pub(crate) fn unify(
+        mut self,
+        other: &Self,
+        positions: &[BodyTerm<T::Functor>],
+    ) -> Result<Self, UnificationFailure<T>>
     where
         T: TypeDomain,
     {
-        self.unify_with(other, positions).then_some(self)
+        self.unify_with(other, positions).map(|_| self)
     }
 
-    pub(super) fn unify_with(&mut self, other: &Self, positions: &[BodyTerm<T::Functor>]) -> bool
+    pub(super) fn unify_with(
+        &mut self,
+        other: &Self,
+        positions: &[BodyTerm<T::Functor>],
+    ) -> Result<(), UnificationFailure<T>>
     where
         T: TypeDomain,
     {
@@ -34,23 +56,46 @@ impl<T: Clone> Tup<T> {
         let mut stack: Vec<_> = positions
             .iter()
             .zip(other.iter().map(Cow::Borrowed))
+            .enumerate()
+            .map(|(p, pair)| (vec![p], pair))
             .collect();
 
-        while let Some((pos, t)) = stack.pop() {
+        while let Some((path, (pos, t))) = stack.pop() {
             match pos {
-                BodyTerm::Var(v) => self[*v as usize].meet_with(&t),
+                BodyTerm::Var(v) => {
+                    let lhs = &mut self[*v as usize];
+                    let before = lhs.clone();
+                    lhs.meet_with(&t);
+
+                    if lhs.is_empty() {
+                        return Err(UnificationFailure::Incomparable {
+                            variable: *v,
+                            path,
+                            left: before,
+                            right: t.into_owned(),
+                        });
+                    }
+                }
                 BodyTerm::Functor { functor, subterms } => {
                     let Some(sub) = t.uncons(functor) else {
-                        return false;
+                        return Err(UnificationFailure::Deconstruct {
+                            path,
+                            typ: t.into_owned(),
+                            pattern: functor.clone(),
+                        });
                     };
 
-                    stack.extend(subterms.iter().zip(sub.into_iter().map(Cow::Owned)))
+                    for (position, (subterm, subtype)) in subterms.iter().zip(sub).enumerate() {
+                        let mut new_path = path.clone();
+                        new_path.push(position);
+                        stack.push((new_path, (subterm, Cow::Owned(subtype))))
+                    }
                 }
                 BodyTerm::DontCare => {}
             }
         }
 
-        true
+        Ok(())
     }
 
     pub(super) fn generalized_unify<F>(

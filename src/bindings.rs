@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use pyo3::{
     exceptions::PyTypeError,
@@ -7,19 +7,21 @@ use pyo3::{
 };
 
 use crate::{
-    traits::lattice::Top,
+    traits::lattice::{Meet, Top},
     type_inference::{
         fixpoint::compute_fixpoint,
         model::{BodyAtom, BodyBuiltin, BodyTerm, PatClause},
+        tup::UnificationFailure,
         type_table::TypeTable,
         Program, TypeAnalysis,
     },
     type_terms::{
         const_model::{NemoCtor, NemoFunctor, NestedFunctor},
         flat_type::{IntType, WildcardType},
-        structured_type::{OrNode, TypeNode},
+        structured_type::{OrNode, StructuredTypeConfig, TypeNode},
         topped_lattice::ToppedLattice,
     },
+    util::tup::Tup,
 };
 
 use crate::type_terms::{
@@ -36,10 +38,17 @@ struct Atom {
 }
 
 #[pyclass]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Rule {
     predicate: String,
     clause: PatClause<String, NemoFunctor, NemoCtor, NemoBuiltin>,
+}
+
+#[pymethods]
+impl Rule {
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 #[pyclass]
@@ -89,6 +98,15 @@ fn wildcard() -> Wildcard {
     Wildcard
 }
 
+#[pyclass]
+#[derive(Debug, Clone)]
+struct FunctorTerm(Arc<str>, Vec<PyObject>);
+
+#[pyfunction]
+fn functor(function_symbol: String, subterms: Vec<PyObject>) -> FunctorTerm {
+    FunctorTerm(function_symbol.into(), subterms)
+}
+
 fn term<T: TermLike>(py: Python<'_>, it: PyObject) -> PyResult<T> {
     if let Ok(num) = it.extract::<i64>(py) {
         return Ok(TermLike::constant(IdentConstant::IntConst(num)));
@@ -101,6 +119,14 @@ fn term<T: TermLike>(py: Python<'_>, it: PyObject) -> PyResult<T> {
     }
     if let Ok(_) = it.extract::<Wildcard>(py) {
         return T::wildcard().ok_or(PyTypeError::new_err("cannot use wildcard in head"));
+    }
+    if let Ok(FunctorTerm(fn_sym, terms)) = it.extract(py) {
+        let subterms = terms
+            .into_iter()
+            .map(|t| term(py, t))
+            .collect::<PyResult<Vec<T>>>()?;
+
+        return Ok(T::functor(fn_sym, subterms));
     }
 
     Err(PyTypeError::new_err("unexpected arguments"))
@@ -130,19 +156,24 @@ fn max_variable(term: &BodyTerm<NemoFunctor>) -> u16 {
     }
 }
 
-#[pyfunction]
-fn rule(py: Python<'_>, head: Atom, body: Vec<PyObject>) -> PyResult<Rule> {
-    let builtins: Vec<BodyBuiltin<_, _>> = body
+struct Body {
+    builtins: Vec<BodyBuiltin<NemoFunctor, NemoBuiltin>>,
+    atoms: Vec<BodyAtom<NemoFunctor, String>>,
+    num_variables: u16,
+}
+
+fn mk_body(py: Python<'_>, input: Vec<PyObject>) -> PyResult<Body> {
+    let builtins: Vec<BodyBuiltin<_, _>> = input
         .iter()
         .filter_map(|b| b.extract(py).ok().map(|b: BuiltinExpr| b.0))
         .collect();
 
-    let body: Vec<_> = body
+    let atoms: Vec<_> = input
         .iter()
         .filter_map(|b| b.extract(py).ok().map(|a| body_atom(py, a)))
         .collect::<Result<_, _>>()?;
 
-    let body_variables = body
+    let num_variables = atoms
         .iter()
         .flat_map(|atom| &atom.terms)
         .chain(builtins.iter().flat_map(|b| &b.terms))
@@ -150,6 +181,21 @@ fn rule(py: Python<'_>, head: Atom, body: Vec<PyObject>) -> PyResult<Rule> {
         .max()
         .map(|v| v + 1)
         .unwrap_or(0);
+
+    Ok(Body {
+        builtins,
+        atoms,
+        num_variables,
+    })
+}
+
+#[pyfunction]
+fn rule(py: Python<'_>, head: Atom, body: Vec<PyObject>) -> PyResult<Rule> {
+    let Body {
+        atoms,
+        builtins,
+        num_variables,
+    } = mk_body(py, body)?;
 
     Ok(Rule {
         predicate: head.predicate,
@@ -159,9 +205,9 @@ fn rule(py: Python<'_>, head: Atom, body: Vec<PyObject>) -> PyResult<Rule> {
                 .into_iter()
                 .map(|t| term(py, t))
                 .collect::<Result<_, _>>()?,
-            body_atoms: body,
+            body_atoms: atoms,
             body_builtins: builtins,
-            body_variables,
+            body_variables: num_variables,
         },
     })
 }
@@ -271,6 +317,28 @@ fn flat_node_to_py(py: Python<'_>, node: TypeNode<FlatType>) -> PyResult<PyObjec
     }
 }
 
+#[pyclass]
+#[derive(Debug, Clone)]
+struct FwTyp(StructuredType<FlatType>);
+
+#[pymethods]
+impl FwTyp {
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+struct BwTyp(StructuredType<WildcardType>);
+
+#[pymethods]
+impl BwTyp {
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+}
+
 fn wildcard_type_to_py(py: Python<'_>, typ: WildcardType) -> Vec<PyObject> {
     let mut result = flat_type_to_py(py, typ.flat_type);
     if typ.wildcard {
@@ -356,31 +424,10 @@ impl Jungable for StructuredType<WildcardType> {
     }
 }
 
-fn mk_jungle_map(
-    py: Python<'_>,
-    map: &HashMap<String, TypeTable<impl Jungable + Clone>>,
-) -> PyResult<PyObject> {
-    let result = PyDict::new(py);
-    for (pred, typ) in map {
-        let multi_table: Vec<Vec<_>> = typ
-            .rows
-            .iter()
-            .map(|tup| {
-                tup.iter()
-                    .cloned()
-                    .map(|jungle| jungle.make_jungle(py))
-                    .collect()
-            })
-            .collect::<Result<_, _>>()?;
-
-        result.set_item(pred, multi_table)?;
-    }
-
-    Ok(result.into_py(py))
-}
+type ResultMap<T> = HashMap<String, Vec<Vec<T>>>;
 
 #[pyfunction]
-fn inference(py: Python<'_>, rules: Vec<Rule>, output: String) -> PyResult<(PyObject, PyObject)> {
+fn inference(rules: Vec<Rule>, output: String) -> PyResult<(ResultMap<FwTyp>, ResultMap<BwTyp>)> {
     let mut program = Program::new();
 
     for rule in rules {
@@ -389,12 +436,179 @@ fn inference(py: Python<'_>, rules: Vec<Rule>, output: String) -> PyResult<(PyOb
 
     let analysis: TypeAnalysis<_, StructuredType<FlatType>> = program.analyse();
     let fixpoint = compute_fixpoint(output.clone(), analysis.clone());
-    let forward = mk_jungle_map(py, &fixpoint.map)?;
+    let forward = fixpoint
+        .map
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                v.rows
+                    .iter()
+                    .map(|tup| tup.iter().cloned().map(FwTyp).collect())
+                    .collect(),
+            )
+        })
+        .collect();
 
     let backward = analysis.backwards(fixpoint.deps, output, fixpoint.map);
-    let backward = mk_jungle_map(py, &backward)?;
+    let backward = backward
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                v.rows
+                    .iter()
+                    .map(|tup| tup.iter().cloned().map(BwTyp).collect())
+                    .collect(),
+            )
+        })
+        .collect();
 
     Ok((forward, backward))
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+struct MeetFailure {
+    #[pyo3(get)]
+    position: usize,
+    #[pyo3(get)]
+    predicate: String,
+    #[pyo3(get)]
+    variable: u16,
+    #[pyo3(get)]
+    lhs: FwTyp,
+    #[pyo3(get)]
+    rhs: FwTyp,
+    #[pyo3(get)]
+    path: Vec<usize>,
+}
+
+#[pymethods]
+impl MeetFailure {
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+struct DeconstructFailure {
+    #[pyo3(get)]
+    position: usize,
+    #[pyo3(get)]
+    predicate: String,
+    #[pyo3(get)]
+    inferred: FwTyp,
+    #[pyo3(get)]
+    pattern: (String, usize),
+    #[pyo3(get)]
+    path: Vec<usize>,
+}
+
+#[pymethods]
+impl DeconstructFailure {
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+enum Failure {
+    Meet(MeetFailure),
+    Deconstruct(DeconstructFailure),
+}
+
+fn exec_body(
+    fw: ResultMap<FwTyp>,
+    body: Body,
+) -> Result<TypeTable<StructuredType<FlatType>>, Vec<Failure>> {
+    let mut table: TypeTable<_> = TypeTable::new(body.num_variables);
+
+    for (body_position, BodyAtom { predicate, terms }) in body.atoms.iter().enumerate() {
+        let other = TypeTable {
+            rows: fw
+                .get(predicate)
+                .unwrap()
+                .into_iter()
+                .map(|tup| Tup(tup.iter().map(|FwTyp(t)| t.clone()).collect()))
+                .collect(),
+        };
+
+        table = match table.meet(&other, terms.as_slice()) {
+            Ok(table) => table,
+            Err(failures) => {
+                return Err(failures
+                    .into_iter()
+                    .map(|f| match f {
+                        UnificationFailure::Incomparable {
+                            variable,
+                            path,
+                            left,
+                            right,
+                        } => Failure::Meet(MeetFailure {
+                            position: body_position,
+                            predicate: predicate.clone(),
+                            variable,
+                            lhs: FwTyp(left),
+                            rhs: FwTyp(right),
+                            path,
+                        }),
+                        UnificationFailure::Deconstruct { path, typ, pattern } => {
+                            Failure::Deconstruct(DeconstructFailure {
+                                position: body_position,
+                                predicate: predicate.clone(),
+                                inferred: FwTyp(typ),
+                                pattern: match pattern {
+                                    NemoFunctor::Nested(NestedFunctor::List { tag, length }) => {
+                                        (String::from(&tag.unwrap() as &str), length)
+                                    }
+                                    _ => unimplemented!(),
+                                },
+                                path,
+                            })
+                        }
+                    })
+                    .collect())
+            }
+        }
+    }
+
+    for BodyBuiltin { builtin, terms } in &body.builtins {
+        table.apply_builtin(&StructuredTypeConfig {}, builtin, terms);
+    }
+
+    Ok(table)
+}
+
+#[pyfunction]
+fn execute_body(
+    py: Python<'_>,
+    typ_result: ResultMap<FwTyp>,
+    body: Vec<PyObject>,
+) -> PyResult<(Vec<Vec<FwTyp>>, Vec<PyObject>)> {
+    let body = mk_body(py, body)?;
+
+    let table = match exec_body(typ_result, body) {
+        Ok(table) => table,
+        Err(failures) => {
+            let failures = failures
+                .into_iter()
+                .map(|f| match f {
+                    Failure::Meet(inner) => inner.into_py(py),
+                    Failure::Deconstruct(inner) => inner.into_py(py),
+                })
+                .collect();
+            return Ok((Vec::new(), failures));
+        }
+    };
+
+    let res: Vec<Vec<_>> = table
+        .rows
+        .into_iter()
+        .map(|tup| tup.iter().cloned().map(FwTyp).collect())
+        .collect();
+
+    Ok((res, Vec::new()))
 }
 
 #[pymodule]
@@ -402,10 +616,16 @@ fn fixpoints(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rule, m)?)?;
     m.add_function(wrap_pyfunction!(atom, m)?)?;
     m.add_function(wrap_pyfunction!(var, m)?)?;
+    m.add_function(wrap_pyfunction!(functor, m)?)?;
     m.add_function(wrap_pyfunction!(import_data, m)?)?;
     m.add_function(wrap_pyfunction!(inference, m)?)?;
     m.add_function(wrap_pyfunction!(wildcard, m)?)?;
+    m.add_function(wrap_pyfunction!(execute_body, m)?)?;
     m.add_class::<Jungle>()?;
+    m.add_class::<FwTyp>()?;
+    m.add_class::<BwTyp>()?;
+    m.add_class::<DeconstructFailure>()?;
+    m.add_class::<MeetFailure>()?;
 
     Ok(())
 }

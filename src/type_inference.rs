@@ -5,6 +5,7 @@ use crate::{traits::structural::TypeDomain, type_inference::type_table::TypeTabl
 use self::{
     fixpoint::{MonotoneTransform, Recursor},
     model::{BodyAtom, BodyBuiltin, PatClause},
+    tup::UnificationFailure,
 };
 
 pub mod backwards;
@@ -20,22 +21,24 @@ impl<Predicate: Clone, Functor, Constructor, Builtin>
         &self,
         config: &<T as TypeDomain>::Config,
         recursive: &mut impl Recursor<Predicate, TypeTable<T>>,
-    ) -> TypeTable<T>
+    ) -> Result<TypeTable<T>, ((usize, Predicate), Vec<UnificationFailure<T>>)>
     where
         T: TypeDomain<Functor = Functor, Constructor = Constructor, Builtin = Builtin>,
     {
         let mut table: TypeTable<T> = TypeTable::new(self.body_variables);
 
-        for BodyAtom { predicate, terms } in &self.body_atoms {
+        for (pos, BodyAtom { predicate, terms }) in self.body_atoms.iter().enumerate() {
             let other = recursive.recurse(predicate.clone());
-            table = table.meet(other, terms.as_slice());
+            table = table
+                .meet(other, terms.as_slice())
+                .map_err(|f| ((pos, predicate.clone()), f))?;
         }
 
         for BodyBuiltin { builtin, terms } in &self.body_builtins {
             table.apply_builtin(config, builtin, terms);
         }
 
-        table
+        Ok(table)
     }
 }
 
@@ -71,10 +74,11 @@ where
             .get(p)
             .iter()
             .flat_map(|b| b.iter())
-            .map(|clause| {
+            .filter_map(|clause| {
                 clause
                     .execute_body(config, recursive)
-                    .apply_ctor(config, &clause.head)
+                    .ok()
+                    .map(|body| body.apply_ctor(config, &clause.head))
             })
             .fold(TypeTable::empty(), |mut current, next| {
                 current.union_with(next);
